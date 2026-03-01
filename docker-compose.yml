@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  feedback-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["uv", "run", "python", "-m", "src.apps.feedback_server"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logging:/app/logging
+      - ./errorcase:/app/errorcase
+    environment:
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-default_secret_key}
+    restart: unless-stopped
+
+  crawler-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # src.main or whatever the entry point for cron/bot is
+    command: ["uv", "run", "python", "-m", "src.main"]
+    volumes:
+      - ./logging:/app/logging
+      - ./errorcase:/app/errorcase
+    environment:
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-default_secret_key}
+    restart: unless-stopped

@@ -1,0 +1,44 @@
+name: Stock Report Automation (Every 3 Hours)
+
+on:
+  schedule:
+    # 3시간마다 정각에 실행 (UTC 기준)
+    # 한국 시간(KST)은 UTC+9이므로, 아래 스케줄은 KST 기준 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00에 실행됩니다.
+    - cron: '0 */3 * * *'
+  # 수동 실행을 위한 설정
+  workflow_dispatch:
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 저장소 체크아웃 (Checkout Repository)
+        uses: actions/checkout@v4
+
+      - name: Python 환경 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: uv 설치
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: 의존성 설치 (Install Dependencies)
+        run: |
+          # uv 환경 변수(bin) 경로 설정
+          export PATH="$HOME/.cargo/bin:$PATH"
+          uv sync --frozen
+
+      - name: 리포트 생성 및 전송 파이프라인 실행
+        env:
+          # GitHub Secrets에 등록된 환경 변수들을 여기서 주입합니다.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          uv run python -m src.main
