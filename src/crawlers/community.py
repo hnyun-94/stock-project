@@ -161,7 +161,7 @@ async def get_reddit_wallstreetbets(max_items: int = 5) -> List[CommunityPost]:
     """
     url = f"https://www.reddit.com/r/wallstreetbets/hot.json?limit={max_items}"
     headers = {
-        "User-Agent": "python:stock-report:v1.0 (by /u/hyunnohyun)"
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
     
     posts = []
