@@ -33,8 +33,16 @@ async def safe_gemini_call(prompt: str) -> str:
     client = _get_client()
     async with _gemini_sema:
         response = await client.aio.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-1.5-flash',
             contents=prompt,
+            config=genai.types.GenerateContentConfig(
+                safety_settings=[
+                    genai.types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                    genai.types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+                    genai.types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                    genai.types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                ]
+            )
         )
         await asyncio.sleep(2)  # 분당 요청수 추가 방어
     return response.text

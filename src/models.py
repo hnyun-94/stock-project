@@ -15,6 +15,7 @@ class NewsArticle:
     link: str
     summary: Optional[str] = None
     date: Optional[str] = None
+    publisher: Optional[str] = None
 
 @dataclass
 class MarketIndex:
