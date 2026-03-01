@@ -1,6 +1,10 @@
 name: Stock Report Automation (Every 3 Hours)
 
 on:
+  push:
+    branches:
+      - main
+      - master
   schedule:
     # 3시간마다 정각에 실행 (UTC 기준)
     # 한국 시간(KST)은 UTC+9이므로, 아래 스케줄은 KST 기준 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00에 실행됩니다.
