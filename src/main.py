@@ -151,8 +151,8 @@ async def run_pipeline() -> None:
             
             # 팩토리 패턴 대신 전략 적용 (Dictionary Mapping)
             notifiers = {
-                "email": EmailSender(),
-                "telegram": TelegramSender()
+                "email": EmailSender()
+                # "telegram": TelegramSender()  # 텔레그램 발송 기능 제외
             }
             
             for channel in user.channels:
@@ -161,7 +161,7 @@ async def run_pipeline() -> None:
                     action = NotificationAction(sender, user, subject, report_md_content)
                     await global_message_queue.enqueue(action)
                 else:
-                    global_logger.warning(f"지원하지 않거나 등록되지 않은 채널입니다: {channel}")
+                    global_logger.warning(f"지원하지 않거나 등록되지 않은(비활성화된) 채널입니다: {channel}")
             
         global_logger.info("큐에 대기중인 발송 작업이 모두 끝날 때까지 대기합니다...")
         await global_message_queue.join()
