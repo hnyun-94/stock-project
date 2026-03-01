@@ -14,6 +14,7 @@ from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_excep
 from src.models import MarketIndex, NewsArticle, CommunityPost, SearchTrend
 from src.utils.logger import global_logger
 from src.utils.circuit_breaker import async_circuit_breaker
+from src.services.prompt_manager import get_cached_prompt
 
 # 제미나이 API 호출 병목/Rate Limit 15RPM 방지를 위한 Semaphore 및 딜레이
 _gemini_sema = asyncio.Semaphore(2)
@@ -28,14 +29,15 @@ def _get_client():
 
 @async_circuit_breaker(failure_threshold=2, recovery_timeout=120, fallback_value=lambda: "⚠️ [Circuit Open] 현재 AI 분석 서버 구간에 장애가 감지되어 요약 텍스트 생성을 건너뛰었습니다.")
 @retry(wait=wait_exponential(multiplier=5, min=10, max=60), stop=stop_after_attempt(5))
-async def safe_gemini_call(prompt: str) -> str:
+async def safe_gemini_call(prompt: str, model: str = 'gemini-1.5-flash', temperature: float = 0.5) -> str:
     """Gemini API 호출 시 429 에러 등을 대비한 안전한 래퍼 함수입니다."""
     client = _get_client()
     async with _gemini_sema:
         response = await client.aio.models.generate_content(
-            model='gemini-1.5-flash',
+            model=model,
             contents=prompt,
             config=genai.types.GenerateContentConfig(
+                temperature=temperature,
                 safety_settings=[
                     genai.types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
                     genai.types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
@@ -82,14 +84,25 @@ async def generate_market_summary(market_indices: List[MarketIndex], market_news
             for tr in datalab_trends:
                 context_trends += f"- {tr.keyword}: {tr.traffic}\n"
                 
-        template = _load_prompt_template("market_summary.md")
-        prompt = template.format(
-            context_indices=context_indices,
-            context_news=context_news,
-            context_trends=context_trends
-        )
+        # 먼저 Notion에서 동적으로 관리되는 프롬프트를 시도
+        prompt_data = get_cached_prompt("market_summary", context_indices=context_indices, context_news=context_news, context_trends=context_trends)
         
-        response_text = await safe_gemini_call(prompt)
+        if prompt_data:
+            prompt = prompt_data["content"]
+            model = prompt_data.get("model", "gemini-1.5-flash")
+            temperature = prompt_data.get("temperature", 0.5)
+        else:
+            # 실패하거나 아예 등록이 안 되어 있으면 로컬 Fallback 텍스트 마크다운 사용
+            template = _load_prompt_template("market_summary.md")
+            prompt = template.format(
+                context_indices=context_indices,
+                context_news=context_news,
+                context_trends=context_trends
+            )
+            model = "gemini-1.5-flash"
+            temperature = 0.5
+        
+        response_text = await safe_gemini_call(prompt, model=model, temperature=temperature)
         return response_text
         
     except Exception as e:
@@ -118,14 +131,23 @@ async def generate_theme_briefing(keyword: str, keyword_news: List[NewsArticle],
         for i, post in enumerate(community_posts[:5], 1):
             context_community += f"{i}. {post.title}\n"
             
-        template = _load_prompt_template("theme_briefing.md")
-        prompt = template.format(
-            keyword=keyword,
-            context_news=context_news,
-            context_community=context_community
-        )
+        prompt_data = get_cached_prompt("theme_briefing", keyword=keyword, context_news=context_news, context_community=context_community)
+        
+        if prompt_data:
+            prompt = prompt_data["content"]
+            model = prompt_data.get("model", "gemini-1.5-flash")
+            temperature = prompt_data.get("temperature", 0.5)
+        else:
+            template = _load_prompt_template("theme_briefing.md")
+            prompt = template.format(
+                keyword=keyword,
+                context_news=context_news,
+                context_community=context_community
+            )
+            model = "gemini-1.5-flash"
+            temperature = 0.5
 
-        response_text = await safe_gemini_call(prompt)
+        response_text = await safe_gemini_call(prompt, model=model, temperature=temperature)
         return response_text
         
     except Exception as e:
@@ -150,14 +172,23 @@ async def generate_personalized_portfolio_analysis(holdings: List[str], market_s
         joined_holdings = ", ".join(holdings)
         joined_theme_briefings = chr(10).join(theme_briefings)
         
-        template = _load_prompt_template("portfolio_analysis.md")
-        prompt = template.format(
-            holdings=joined_holdings,
-            market_summary=market_summary,
-            theme_briefings=joined_theme_briefings
-        )
+        prompt_data = get_cached_prompt("portfolio_analysis", holdings=joined_holdings, market_summary=market_summary, theme_briefings=joined_theme_briefings)
+        
+        if prompt_data:
+            prompt = prompt_data["content"]
+            model = prompt_data.get("model", "gemini-1.5-flash")
+            temperature = prompt_data.get("temperature", 0.5)
+        else:
+            template = _load_prompt_template("portfolio_analysis.md")
+            prompt = template.format(
+                holdings=joined_holdings,
+                market_summary=market_summary,
+                theme_briefings=joined_theme_briefings
+            )
+            model = "gemini-1.5-flash"
+            temperature = 0.5
 
-        response_text = await safe_gemini_call(prompt)
+        response_text = await safe_gemini_call(prompt, model=model, temperature=temperature)
         return response_text
         
     except Exception as e:

@@ -25,6 +25,7 @@ from src.crawlers.google_trends import get_daily_trending_searches
 from src.crawlers.naver_datalab import get_naver_datalab_trends
 
 from src.services.ai_summarizer import generate_market_summary, generate_theme_briefing, generate_personalized_portfolio_analysis
+from src.services.prompt_manager import fetch_prompts_from_notion
 from src.utils.report_formatter import build_markdown_report
 from src.services.user_manager import fetch_active_users
 from src.services.ai_tracker import record_prediction_snapshot
@@ -52,6 +53,10 @@ async def run_pipeline() -> None:
         없음 (None) - 실행 성공 여부는 콘솔 및 log 파일(`logging/` 폴더)에 자동으로 기록됩니다.
     """
     global_logger.info("=== 🚀 주식 리포트 생성 파이프라인 시작 ===")
+    
+    # 0. Notion에서 동적 프롬프트 설정 (미리 캐싱)
+    fetch_prompts_from_notion()
+    
     global_message_queue.start_workers() # 워커 스레드 시작
     try:
         # 1. 공통 시황 데이터 수집 (병렬 처리)
