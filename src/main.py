@@ -102,25 +102,33 @@ async def run_pipeline() -> None:
                 theme_briefings.append(backtest_report_md)
             theme_briefings.append(common_theme_md)
             
-            # 사용자 키워드 뉴스 병렬 크롤링 (API 횟수 제한 때문에 키워드는 2개까지)
+            # 사용자 키워드 뉴스 완전 병렬 크롤링 [Task 6.2, REQ-P02]
+            # 기존: 키워드별 순차 루프 → 변경: 모든 키워드의 모든 소스를 한 번에 병렬 처리
             keywords_to_search = user.keywords[:2]
-            global_logger.info(f"      - {keywords_to_search} 키워드 뉴스 풀 다양화 수집 중 (네이버,다음,구글)...")
+            global_logger.info(f"      - {keywords_to_search} 키워드 뉴스 완전 병렬 수집 중 (네이버,다음,구글)...")
             
-            kw_news_results = []
+            # 모든 키워드 × 모든 소스를 flat하게 gather (최대 2키워드 × 3소스 = 6개 동시 요청)
+            all_crawl_tasks = []
             for kw in keywords_to_search:
-                multi_source_res = await asyncio.gather(
+                all_crawl_tasks.extend([
                     search_news_by_keyword(kw, 3),
                     search_daum_news_by_keyword(kw, 3),
                     search_google_news_by_keyword(kw, 3),
-                    return_exceptions=True
-                )
+                ])
+            
+            all_results = await asyncio.gather(*all_crawl_tasks, return_exceptions=True)
+            
+            # 결과를 키워드별로 3개씩 그룹핑 (네이버, 다음, 구글 순)
+            kw_news_results = []
+            for i in range(0, len(all_results), 3):
+                chunk = all_results[i:i+3]
                 flat_news = []
-                for res in multi_source_res:
+                for res in chunk:
                     if isinstance(res, list):
                         flat_news.extend(res)
-                kw_news_results.append(flat_news[:7]) # 너무 길면 토큰 초과 위험이 있으니 최대 7개로 제한
+                kw_news_results.append(flat_news[:7])  # 토큰 초과 방지: 최대 7개
             
-            # 수집된 데이터를 바탕으로 AI 테마 브리핑 요약
+            # 수집된 데이터를 바탕으로 AI 테마 브리핑 요약 (이것도 병렬)
             keyword_md_tasks = []
             for keyword, kw_news in zip(keywords_to_search, kw_news_results):
                 global_logger.info(f"      - '{keyword}' 테마 AI 요약 분석 큐 등록 중...")
