@@ -24,6 +24,7 @@ from src.crawlers.community import get_naver_board_posts, get_dc_stock_gallery, 
 from src.crawlers.google_trends import get_daily_trending_searches
 from src.crawlers.naver_datalab import get_naver_datalab_trends
 from src.crawlers.http_client import close_session
+from src.crawlers.browser_pool import BrowserPool
 
 from src.services.ai_summarizer import generate_market_summary, generate_theme_briefing, generate_personalized_portfolio_analysis
 from src.services.prompt_manager import fetch_prompts_from_notion
@@ -188,6 +189,7 @@ async def run_pipeline() -> None:
     finally:
         # 파이프라인 종료 시 글로벌 HTTP 세션 및 브라우저 풀 자원 정리 [Task 6.1, 6.4]
         await close_session()
+        await BrowserPool.cleanup()
 
 async def main_with_timeout():
     try:
