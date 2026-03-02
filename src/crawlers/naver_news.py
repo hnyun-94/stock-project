@@ -7,6 +7,7 @@
 
 from typing import List, Dict
 import aiohttp
+from src.crawlers.http_client import get_session
 from bs4 import BeautifulSoup
 
 from src.models import NewsArticle
@@ -24,10 +25,10 @@ async def get_market_news() -> List[NewsArticle]:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, timeout=10) as response:
-            response.raise_for_status()
-            html = await response.text(encoding='euc-kr')
+    session = await get_session()
+    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+        response.raise_for_status()
+        html = await response.text(encoding='euc-kr')
 
     soup = BeautifulSoup(html, "html.parser")
     news_list = []
@@ -67,10 +68,10 @@ async def search_news_by_keyword(keyword: str, max_items: int = 5) -> List[NewsA
     url = f"https://search.naver.com/search.naver?where=news&query={keyword}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, timeout=10) as response:
-            response.raise_for_status()
-            html = await response.text()
+    session = await get_session()
+    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+        response.raise_for_status()
+        html = await response.text()
             
     soup = BeautifulSoup(html, "html.parser")
     news_list = []

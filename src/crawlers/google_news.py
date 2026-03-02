@@ -8,6 +8,7 @@
 
 from typing import List
 import aiohttp
+from src.crawlers.http_client import get_session
 import feedparser
 
 from src.models import NewsArticle
@@ -45,10 +46,10 @@ async def search_google_news_by_keyword(keyword: str, max_items: int = 5) -> Lis
     news_list = []
     
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as response:
-                response.raise_for_status()
-                xml_data = await response.text()
+        session = await get_session()
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            response.raise_for_status()
+            xml_data = await response.text()
                 
         feed = feedparser.parse(xml_data)
         

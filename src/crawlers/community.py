@@ -7,6 +7,7 @@
 
 from typing import List, Dict
 import aiohttp
+from src.crawlers.http_client import get_session
 from bs4 import BeautifulSoup
 
 from src.models import CommunityPost
@@ -32,10 +33,10 @@ async def get_popular_stocks() -> List[Dict[str, str]]:
     url = "https://finance.naver.com/sise/lastsearch2.naver"
     headers = {"User-Agent": "Mozilla/5.0"}
     
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, timeout=10) as res:
-            res.raise_for_status()
-            html = await res.read()
+    session = await get_session()
+    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as res:
+        res.raise_for_status()
+        html = await res.read()
             
     soup = BeautifulSoup(html, "html.parser", from_encoding="euc-kr")
     stocks = []
@@ -80,10 +81,10 @@ async def get_naver_board_posts(code: str, name: str, max_items: int = 3) -> Lis
     url = f"https://finance.naver.com/item/board.naver?code={code}"
     headers = {"User-Agent": "Mozilla/5.0"}
     
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, timeout=10) as res:
-            res.raise_for_status()
-            html = await res.read()
+    session = await get_session()
+    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as res:
+        res.raise_for_status()
+        html = await res.read()
             
     soup = BeautifulSoup(html, "html.parser", from_encoding="euc-kr")
     posts = []
@@ -119,10 +120,10 @@ async def get_dc_stock_gallery(max_items: int = 5) -> List[CommunityPost]:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
     }
     
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, timeout=10) as res:
-            res.raise_for_status()
-            html = await res.text()
+    session = await get_session()
+    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as res:
+        res.raise_for_status()
+        html = await res.text()
             
     soup = BeautifulSoup(html, "html.parser")
     posts = []
@@ -166,23 +167,23 @@ async def get_reddit_wallstreetbets(max_items: int = 5) -> List[CommunityPost]:
     
     posts = []
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=10) as res:
-                if res.status == 200:
-                    data = await res.json()
-                    children = data.get("data", {}).get("children", [])
-                    for child in children:
-                        post = child.get("data", {})
-                        title = post.get("title")
-                        permalink = post.get("permalink")
-                        upvotes = post.get("ups", 0)
-                        
-                        full_link = f"https://www.reddit.com{permalink}"
-                        
-                        if title and permalink:
-                            posts.append(CommunityPost(title=f"[WSB|추천:{upvotes}] {title}", link=full_link))
-                else:
-                    global_logger.error(f"Reddit WSB API 호출 실패: HTTP {res.status}")
+        session = await get_session()
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as res:
+            if res.status == 200:
+                data = await res.json()
+                children = data.get("data", {}).get("children", [])
+                for child in children:
+                    post = child.get("data", {})
+                    title = post.get("title")
+                    permalink = post.get("permalink")
+                    upvotes = post.get("ups", 0)
+                    
+                    full_link = f"https://www.reddit.com{permalink}"
+                    
+                    if title and permalink:
+                        posts.append(CommunityPost(title=f"[WSB|추천:{upvotes}] {title}", link=full_link))
+            else:
+                global_logger.error(f"Reddit WSB API 호출 실패: HTTP {res.status}")
     except Exception as e:
         global_logger.error(f"Reddit 크롤링 중 예외 발생: {e}")
         
