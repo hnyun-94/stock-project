@@ -23,10 +23,11 @@ HTTP 클라이언트 세션 싱글톤 모듈.
 """
 
 import aiohttp
+from typing import Optional
 from src.utils.logger import global_logger
 
 # 모듈 레벨 글로벌 세션 변수
-_session: aiohttp.ClientSession | None = None
+_session: Optional[aiohttp.ClientSession] = None
 
 # 모든 크롤러가 공유하는 기본 헤더와 타임아웃 설정
 _DEFAULT_HEADERS = {
