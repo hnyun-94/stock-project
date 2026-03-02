@@ -14,22 +14,22 @@
 
 ### Sprint 1 - Quick Wins (즉시 적용)
 
-- [ ] **REQ-P01: aiohttp ClientSession 재사용** ← 🥇 최우선
+- [x] **REQ-P01: aiohttp ClientSession 재사용** ← 🥇 최우선 ✅ PR #2
   - `src/crawlers/http_client.py` 신규 생성, 크롤러 **7개** 파일 세션 교체 (google_trends.py 포함)
   - 기대 효과: 크롤링 전체 시간 20~40% 단축
 
-- [ ] **REQ-P03: Gemini 클라이언트 싱글톤 패턴 적용**
+- [x] **REQ-P03: Gemini 클라이언트 싱글톤 패턴 적용** ✅ PR #3
   - `ai_summarizer.py` 내 `_get_client()` 싱글톤 전환 + 데드 코드 제거
 
-- [ ] **REQ-P04: BrowserPool 자원 해제 보장**
+- [x] **REQ-P04: BrowserPool 자원 해제 보장** ✅ PR #6
   - `main.py`의 `finally` 블록에서 `BrowserPool.cleanup()` 호출
 
-- [ ] **REQ-Q04: Docker Compose 환경 변수 일원화**
+- [x] **REQ-Q04: Docker Compose 환경 변수 일원화** ✅ PR #4
   - `docker-compose.yml`에 `env_file: .env` 추가
 
 ### Sprint 2 - Performance (성능 개선)
 
-- [ ] **REQ-P02: 키워드 뉴스 크롤링 완전 병렬화**
+- [x] **REQ-P02: 키워드 뉴스 크롤링 완전 병렬화** ✅ PR #5
   - `main.py`의 순차 for 루프 → `asyncio.gather` 완전 병렬화
   - 기대 효과: 사용자당 50% 시간 단축
 
@@ -82,15 +82,15 @@
 
 ### Sprint 1 - Critical Bugfix (즉시 수정)
 
-- [ ] **REQ-Q01: 피드백 링크 HMAC 서명 연동** ← 🚨 치명적 버그
+- [x] **REQ-Q01: 피드백 링크 HMAC 서명 연동** ← 🚨 치명적 버그 ✅ PR #1
   - `generate_feedback_link()`에 HMAC 서명 포함 → 현재 100% 실패 상태 해결
 
-- [ ] **REQ-Q02: 과도한 타임아웃 일괄 축소** ← 범위 확대
+- [x] **REQ-Q02: 과도한 타임아웃 일괄 축소** ← 범위 확대 ✅ PR #1
   - `user_manager.py`, `prompt_manager.py`: `timeout=300.0` → `timeout=30.0`
   - `ai_summarizer.py:safe_gemini_call`: `timeout=300.0` → `timeout=90.0` ← 🆕
   - `queue_worker.py` SMTP 발송: `timeout=300.0` → `timeout=60.0` ← 🆕
 
-- [ ] **REQ-Q05: 민감 정보 기본값 보안 강화**
+- [x] **REQ-Q05: 민감 정보 기본값 보안 강화** ✅ PR #1
   - `feedback_server.py`의 `WEBHOOK_SECRET` 기본값 제거, 미설정 시 서버 차단
 
 - [ ] **REQ-Q06: 루트 디렉토리 산재 파일 정리**
@@ -116,4 +116,4 @@
 
 _작성일: 2026-03-02 | 상세 요구사항: `requirements/04_phase6_optimization_requirements.md` 참조_
 _진행 Task 명세: `task/phase6_task.md` 참조_
-_갱신일: 2026-03-02 | Gap Analysis 교차 검증 반영 (REQ-P05, REQ-P06, REQ-Q07 추가, REQ-P01/REQ-Q02 보정)_
+_갱신일: 2026-03-02 | Sprint 1 개발 완료 (8 Task, 6 PR) - 체크리스트 갱신_
