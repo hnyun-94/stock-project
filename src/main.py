@@ -23,6 +23,7 @@ from src.crawlers.market_index import get_market_indices
 from src.crawlers.community import get_naver_board_posts, get_dc_stock_gallery, get_popular_stocks, get_reddit_wallstreetbets
 from src.crawlers.google_trends import get_daily_trending_searches
 from src.crawlers.naver_datalab import get_naver_datalab_trends
+from src.crawlers.browser_pool import BrowserPool
 
 from src.services.ai_summarizer import generate_market_summary, generate_theme_briefing, generate_personalized_portfolio_analysis
 from src.services.prompt_manager import fetch_prompts_from_notion
@@ -175,6 +176,9 @@ async def run_pipeline() -> None:
         
     except Exception as e:
         log_critical_error(e, "주식 리포트 파이프라인 메인 실행")
+    finally:
+        # 파이프라인 종료 시 Playwright 브라우저 자원 해제 [Task 6.4, REQ-P04]
+        await BrowserPool.cleanup()
 
 if __name__ == "__main__":
     asyncio.run(run_pipeline())
