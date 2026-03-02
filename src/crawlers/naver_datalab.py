@@ -8,6 +8,7 @@
 import os
 from typing import List, Dict
 import aiohttp
+from src.crawlers.http_client import get_session
 from datetime import datetime, timedelta
 from tenacity import retry, wait_exponential, stop_after_attempt
 
@@ -55,14 +56,14 @@ async def get_naver_datalab_trends(keywords: List[str] = None) -> List[SearchTre
     
     trends = []
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=body, timeout=10) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    global_logger.error(f"데이터랩 API 호출 실패: HTTP {response.status} - {error_text}")
-                    return []
-                    
-                data = await response.json()
+        session = await get_session()
+        async with session.post(url, headers=headers, json=body, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                global_logger.error(f"데이터랩 API 호출 실패: HTTP {response.status} - {error_text}")
+                return []
+                
+            data = await response.json()
                 
         results = data.get("results", [])
         for res in results:

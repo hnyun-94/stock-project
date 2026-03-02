@@ -7,6 +7,7 @@
 
 from typing import List, Dict, Any
 import aiohttp
+from src.crawlers.http_client import get_session
 from bs4 import BeautifulSoup
 import traceback
 
@@ -49,10 +50,10 @@ async def get_market_indices() -> List[MarketIndex]:
         url = "https://finance.naver.com/"
         headers = {"User-Agent": "Mozilla/5.0"}
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=10) as response:
-                response.raise_for_status()
-                html = await response.text(encoding='euc-kr')
+        session = await get_session()
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            response.raise_for_status()
+            html = await response.text(encoding='euc-kr')
                 
         soup = BeautifulSoup(html, "html.parser")
         
@@ -85,10 +86,10 @@ async def get_market_indices() -> List[MarketIndex]:
         # 환율 (USD), 국제 금, WTI 유가 등 매크로 지표 추가
         try:
             market_url = "https://finance.naver.com/marketindex/"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(market_url, headers=headers, timeout=10) as m_res:
-                    m_res.raise_for_status()
-                    m_html = await m_res.text(encoding='euc-kr')
+            m_session = await get_session()
+            async with m_session.get(market_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as m_res:
+                m_res.raise_for_status()
+                m_html = await m_res.text(encoding='euc-kr')
             m_soup = BeautifulSoup(m_html, "html.parser")
             
             # 시장 지표를 담은 박스들 (h_lst: 종목명, value: 값)

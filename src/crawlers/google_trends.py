@@ -7,6 +7,7 @@ feedparser 기반으로 Google Trends RSS 피드를 가져와
 
 from typing import List, Dict
 import aiohttp
+from src.crawlers.http_client import get_session
 import feedparser
 import traceback
 
@@ -24,10 +25,10 @@ async def get_daily_trending_searches() -> List[SearchTrend]:
     trends = []
     try:
         url = "https://trends.google.co.kr/trending/rss?geo=KR"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as response:
-                response.raise_for_status()
-                xml_data = await response.text()
+        session = await get_session()
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            response.raise_for_status()
+            xml_data = await response.text()
                 
         feed = feedparser.parse(xml_data)
         

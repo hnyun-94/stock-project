@@ -6,6 +6,7 @@
 
 from typing import List
 import aiohttp
+from src.crawlers.http_client import get_session
 from bs4 import BeautifulSoup
 from tenacity import retry, wait_exponential, stop_after_attempt
 
@@ -37,30 +38,30 @@ async def search_daum_news_by_keyword(keyword: str, max_items: int = 5) -> List[
     
     news_list = []
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                html = await response.text()
+        session = await get_session()
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            response.raise_for_status()
+            html = await response.text()
+            
+            soup = BeautifulSoup(html, "html.parser")
+            
+            # 다음 뉴스 검색 결과 리스트 아이템 선택 (CSS 셀렉터는 변경될 수 있음)
+            articles = soup.select("ul.c-list-basic li")
+            
+            for item in articles[:max_items]:
+                title_elem = item.select_one("div.item-title a")
+                # 언론사 정보 파싱
+                pub_elem = item.select_one("div.item-info span.item-title")
                 
-                soup = BeautifulSoup(html, "html.parser")
-                
-                # 다음 뉴스 검색 결과 리스트 아이템 선택 (CSS 셀렉터는 변경될 수 있음)
-                articles = soup.select("ul.c-list-basic li")
-                
-                for item in articles[:max_items]:
-                    title_elem = item.select_one("div.item-title a")
-                    # 언론사 정보 파싱
-                    pub_elem = item.select_one("div.item-info span.item-title")
+                if title_elem:
+                    # 공백 제거 및 정리
+                    title = title_elem.get_text(strip=True)
+                    link = title_elem.get("href", "")
+                    publisher = pub_elem.get_text(strip=True) if pub_elem else "다음 뉴스"
                     
-                    if title_elem:
-                        # 공백 제거 및 정리
-                        title = title_elem.get_text(strip=True)
-                        link = title_elem.get("href", "")
-                        publisher = pub_elem.get_text(strip=True) if pub_elem else "다음 뉴스"
-                        
-                        # 데스크톱 URL로 변경 (mo.daum.net 등 방지)
-                        if "v.media.daum.net" in link or "v.daum.net" in link:
-                            news_list.append(NewsArticle(title=title, link=link, publisher=publisher))
+                    # 데스크톱 URL로 변경 (mo.daum.net 등 방지)
+                    if "v.media.daum.net" in link or "v.daum.net" in link:
+                        news_list.append(NewsArticle(title=title, link=link, publisher=publisher))
                             
     except Exception as e:
         global_logger.error(f"[Daum뉴스] 크롤링 중 에러 발생 ({keyword}): {e}")
