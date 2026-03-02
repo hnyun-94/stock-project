@@ -19,13 +19,24 @@ from src.services.prompt_manager import get_cached_prompt
 # 제미나이 API 호출 병목/Rate Limit 15RPM 방지를 위한 Semaphore 및 딜레이
 _gemini_sema = asyncio.Semaphore(2)
 
+# Gemini 클라이언트 싱글톤 인스턴스 [Task 6.3, REQ-P03]
+# 매번 새 Client 객체를 생성하면 내부 초기화 오버헤드가 발생하므로
+# 모듈 레벨에서 한 번만 생성하여 재사용합니다.
+_client = None
+
 def _get_client():
-    """Gemini 클라이언트 객체를 초기화하고 반환합니다."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY 환경 변수가 설정되어 있지 않습니다.")
+    """Gemini 클라이언트 싱글톤 인스턴스를 반환합니다.
     
-    return genai.Client(api_key=api_key)
+    최초 호출 시 Client 객체를 생성하고, 이후에는 동일 인스턴스를 재사용합니다.
+    GEMINI_API_KEY 환경변수가 설정되어 있어야 합니다.
+    """
+    global _client
+    if _client is None:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY 환경 변수가 설정되어 있지 않습니다.")
+        _client = genai.Client(api_key=api_key)
+    return _client
 
 @async_circuit_breaker(failure_threshold=2, recovery_timeout=120, fallback_value=lambda: "⚠️ [Circuit Open] 현재 AI 분석 서버 구간에 장애가 감지되어 요약 텍스트 생성을 건너뛰었습니다.")
 @retry(wait=wait_exponential(multiplier=5, min=10, max=60), stop=stop_after_attempt(5))
@@ -72,8 +83,6 @@ async def generate_market_summary(market_indices: List[MarketIndex], market_news
         str: 마크다운 형식의 시장 요약 리포트 텍스트
     """
     try:
-        client = _get_client()
-        
         # 프롬프트 구성
         context_indices = "[국내 시장 지표]\n"
         for m_idx in market_indices:
@@ -126,8 +135,6 @@ async def generate_theme_briefing(keyword: str, keyword_news: List[NewsArticle],
         str: 마크다운 형식의 테마 브리핑 리포트 텍스트
     """
     try:
-        client = _get_client()
-        
         context_news = "[관련 언론 뉴스]\n"
         for i, news in enumerate(keyword_news[:5], 1):
             context_news += f"{i}. {news.title}\n"
