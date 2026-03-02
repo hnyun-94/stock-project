@@ -39,3 +39,16 @@
   - `src/apps/feedback_server.py` 구독자가 리포트 수신 후 별점을 부여하면 저장될 수 있도록 FastAPI 기반 로컬 서버 및 연동 엔드포인트 마련
 - [x] **Locust Load Testing (부하 테스트 파이프라인)**
   - `tests/load/locustfile.py` FastAPI 피드백 웹서버 및 큐 파이프라인에 동시 접속 사용자에 대한 모의 부하 및 견고성 체크
+
+## Phase 5 고도화 (AI 성과/인프라/보안)
+
+- [x] **AI 성과의 장기 Back-testing (기획자)**
+  - `backtesting_scorer.py` 작성, 과거 스냅샷 기반 예측 적중률 분석 리포트 자동 생성
+- [x] **Docker 분산 환경 배포 셋업 (개발자)**
+  - `Dockerfile` + `docker-compose.yml` 작성, 크롤러 파이프라인/피드백 서버 독립 컨테이너 분리
+- [x] **보안 심사 - Webhook Signature (검토자)**
+  - `feedback_server.py`에 HMAC-SHA256 서명 검증 로직 구현
+- [x] **GitHub Actions 3시간 크론 스케줄러 구축**
+  - `.github/workflows/report_scheduler.yml` 작성, 호스팅 비용 0원 자동화
+- [x] **Git 저장소 초기화 및 .gitignore 구성**
+  - 버전 관리 체계 및 민감 파일 보호 구축 완료
