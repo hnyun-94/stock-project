@@ -25,7 +25,8 @@ def fetch_prompts_from_notion() -> None:
                 "Authorization": f"Bearer {notion_token}",
                 "Notion-Version": "2022-06-28"
             },
-            json={}
+            json={},
+            timeout=30.0  # Notion API 타임아웃 30초 [REQ-Q02]
         )
         response.raise_for_status()
         data = response.json()

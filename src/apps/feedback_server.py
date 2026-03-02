@@ -22,7 +22,13 @@ from src.utils.logger import global_logger
 
 app = FastAPI(title="Stock Report Feedback API")
 
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "default_secret_key")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+if not WEBHOOK_SECRET:
+    raise RuntimeError(
+        "⛔ 환경변수 WEBHOOK_SECRET이 설정되지 않았습니다. "
+        "보안을 위해 피드백 서버를 시작할 수 없습니다. "
+        ".env 파일 또는 docker-compose.yml에서 WEBHOOK_SECRET을 설정해 주세요."
+    )
 
 def verify_signature(user: str, score: int, signature: str) -> bool:
     """웹훅 파라미터에 대한 HMAC-SHA256 서명 검증"""

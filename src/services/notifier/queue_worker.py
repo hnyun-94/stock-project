@@ -33,14 +33,21 @@ class MessageQueueWorker:
             try:
                 # CPU Bound인 이메일/소켓 통신 전송(SMTP 등)을 위해 asyncio.to_thread로 블로킹 해소 (필요시)
                 # 여기서는 일단 sender.send가 동기 함수이므로 to_thread를 사용하여 비동기 논블로킹화 처리함.
-                success = await asyncio.to_thread(
-                    action.sender.send, 
-                    action.user, 
-                    action.subject, 
-                    action.content
+                # 이메일 SMTP 발송이 무한정 행(Hang)에 걸리는 것을 방지하기 위해 60초 타임아웃을 설정합니다.
+                # 실제 SMTP 발송은 5~15초이므로 60초면 충분합니다. [REQ-Q02]
+                success = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        action.sender.send, 
+                        action.user, 
+                        action.subject, 
+                        action.content
+                    ),
+                    timeout=60.0
                 )
                 if not success:
                     global_logger.warning(f"[QueueWorker-{worker_id}] {action.user.name} 님에게 발송 실패.")
+            except asyncio.TimeoutError:
+                global_logger.error(f"[QueueWorker-{worker_id}] 통신 타임아웃 초과 (60초): {action.user.name} 님에게 발송을 포기합니다.")
             except Exception as e:
                 global_logger.error(f"[QueueWorker-{worker_id}] 작업 처리 중 예외 발생: {e}")
             finally:
