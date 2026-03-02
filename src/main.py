@@ -29,7 +29,7 @@ from src.services.prompt_manager import fetch_prompts_from_notion
 from src.utils.report_formatter import build_markdown_report
 from src.services.user_manager import fetch_active_users
 from src.services.ai_tracker import record_prediction_snapshot
-from src.services.feedback_manager import generate_feedback_link
+from src.services.feedback_manager import generate_feedback_links_html
 from src.services.backtesting_scorer import generate_backtesting_report
 
 from src.services.notifier.email import EmailSender
@@ -148,8 +148,9 @@ async def run_pipeline() -> None:
             # 발송할 알림은 HTML 대신 통합된 순수 Markdown으로 넘기고 채널별(이메일, 텔레그램)로 자체 렌더링하도록 변경
             report_md_content = build_markdown_report(market_summary_md, theme_briefings)
             
-            # 사용자 맞춤 피드백 양식 꼬리말 동적 삽입
-            feedback_footer = f"\n\n---\n💬 오늘 리포트 어떠셨나요? 피드백 남기기: {generate_feedback_link(name)}\n"
+            # 사용자 맞춤 피드백 양식 꼬리말 동적 삽입 (별점 1~5 개별 HMAC 서명 링크)
+            feedback_links = generate_feedback_links_html(name)
+            feedback_footer = f"\n\n---\n💬 오늘 리포트 어떠셨나요?\n\n{feedback_links}\n"
             report_md_content += feedback_footer
             
             subject = f"오늘 하루의 시황 요약 및 맞춤 테마 리포트 - {name}님"
@@ -176,5 +177,12 @@ async def run_pipeline() -> None:
     except Exception as e:
         log_critical_error(e, "주식 리포트 파이프라인 메인 실행")
 
+async def main_with_timeout():
+    try:
+        # 전체 파이프라인(백그라운드 크롤링, AI 요약, 발송 등)이 무한정 대기하는 것을 방지하고자 5분(300초) 타임아웃 설정
+        await asyncio.wait_for(run_pipeline(), timeout=300.0)
+    except asyncio.TimeoutError:
+        global_logger.error("🚨 전역 타임아웃 발생: 파이프라인 실행이 5분을 초과하여 강제 종료되었습니다. (원인: 크롤링 타임아웃 또는 외부 API 응답 지연)")
+
 if __name__ == "__main__":
-    asyncio.run(run_pipeline())
+    asyncio.run(main_with_timeout())
