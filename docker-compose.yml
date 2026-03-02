@@ -1,3 +1,7 @@
+# Docker Compose 설정 파일.
+# env_file을 통해 .env 파일에서 모든 환경변수를 일원화하여 관리합니다. [Task 6.5, REQ-D01]
+# .env 파일 작성법은 .env.template 파일을 참고하세요.
+
 version: '3.8'
 
 services:
@@ -11,19 +15,19 @@ services:
     volumes:
       - ./logging:/app/logging
       - ./errorcase:/app/errorcase
-    environment:
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-default_secret_key}
+    env_file:
+      - .env
     restart: unless-stopped
 
   crawler-pipeline:
     build:
       context: .
       dockerfile: Dockerfile
-    # src.main or whatever the entry point for cron/bot is
     command: ["uv", "run", "python", "-m", "src.main"]
     volumes:
       - ./logging:/app/logging
       - ./errorcase:/app/errorcase
-    environment:
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-default_secret_key}
+    env_file:
+      - .env
     restart: unless-stopped
+
