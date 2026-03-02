@@ -33,18 +33,23 @@ async def safe_gemini_call(prompt: str, model: str = 'gemini-1.5-flash', tempera
     """Gemini API 호출 시 429 에러 등을 대비한 안전한 래퍼 함수입니다."""
     client = _get_client()
     async with _gemini_sema:
-        response = await client.aio.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=genai.types.GenerateContentConfig(
-                temperature=temperature,
-                safety_settings=[
-                    genai.types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-                    genai.types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
-                    genai.types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-                    genai.types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-                ]
-            )
+        # Gemini API 호출이 무한정 멈추는 것을 방지하기 위해 90초 타임아웃을 설정합니다.
+        # 실제 Gemini 응답은 10~30초이므로 90초면 충분한 여유를 제공합니다. [REQ-Q02]
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=genai.types.GenerateContentConfig(
+                    temperature=temperature,
+                    safety_settings=[
+                        genai.types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                        genai.types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+                        genai.types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                        genai.types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                    ]
+                )
+            ),
+            timeout=90.0
         )
         await asyncio.sleep(2)  # 분당 요청수 추가 방어
     return response.text
