@@ -58,8 +58,9 @@ async def run_pipeline() -> None:
     """
     global_logger.info("=== 🚀 주식 리포트 생성 파이프라인 시작 ===")
     
-    # 0. Notion에서 동적 프롬프트 설정 (미리 캐싱)
-    fetch_prompts_from_notion()
+    # 0. Notion에서 동적 프롬프트 설정 (미리 캐싱) [Task 6.21, REQ-Q07]
+    # 동기 함수를 asyncio.to_thread()로 래핑하여 이벤트 루프 블로킹 방지
+    await asyncio.to_thread(fetch_prompts_from_notion)
     
     global_message_queue.start_workers() # 워커 스레드 시작
     try:
@@ -77,9 +78,9 @@ async def run_pipeline() -> None:
         global_logger.info("[2/5] AI 시장 시황 요약 중...")
         market_summary_md = await generate_market_summary(market_indices, market_news, datalab_trends)
         
-        # 3. 사용자 정보 조회
+        # 3. 사용자 정보 조회 [Task 6.21, REQ-Q07]
         global_logger.info("[3/5] Notion에서 수신 대상자 조회 중...")
-        users = fetch_active_users()
+        users = await asyncio.to_thread(fetch_active_users)
         
         if not users:
             global_logger.warning("발송할 대상(Active User)이 없어 파이프라인을 종료합니다. (혹은 Notion API Key 설정 누락)")
