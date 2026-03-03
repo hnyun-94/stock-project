@@ -88,9 +88,11 @@ async def generate_market_summary(market_indices: List[MarketIndex], market_news
         for m_idx in market_indices:
             context_indices += f"- {m_idx.name}: {m_idx.value} ({m_idx.investor_summary})\n"
             
-        context_news = "[주요 시장 뉴스 헤드라인]\n"
+        context_news = "[주요 시장 뉴스]\n"
         for i, news in enumerate(market_news[:10], 1):
             context_news += f"{i}. {news.title}\n"
+            if news.summary:
+                context_news += f"   → {news.summary[:150]}\n"
             
         context_trends = ""
         if datalab_trends:
@@ -138,6 +140,8 @@ async def generate_theme_briefing(keyword: str, keyword_news: List[NewsArticle],
         context_news = "[관련 언론 뉴스]\n"
         for i, news in enumerate(keyword_news[:5], 1):
             context_news += f"{i}. {news.title}\n"
+            if news.summary:
+                context_news += f"   → {news.summary[:150]}\n"
 
         context_community = "[관련 커뮤니티 여론 (인기글)]\n"
         for i, post in enumerate(community_posts[:5], 1):

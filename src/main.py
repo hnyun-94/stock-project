@@ -23,6 +23,7 @@ from src.crawlers.market_index import get_market_indices
 from src.crawlers.community import get_naver_board_posts, get_dc_stock_gallery, get_popular_stocks, get_reddit_wallstreetbets
 from src.crawlers.google_trends import get_daily_trending_searches
 from src.crawlers.naver_datalab import get_naver_datalab_trends
+from src.crawlers.article_parser import enrich_news_with_leads
 from src.crawlers.http_client import close_session
 from src.crawlers.browser_pool import BrowserPool
 
@@ -147,8 +148,10 @@ async def run_pipeline() -> None:
                         if isinstance(res, list):
                             flat_news.extend(res)
                     news_list = deduplicate_news(flat_news)[:7]  # 중복 제거 후 토큰 초과 방지
+                    # 리드 문단 추출로 AI 컨텍스트 품질 향상 [Task 6.10, REQ-F01]
+                    news_list = await enrich_news_with_leads(news_list, max_articles=3)
                     kw_news_results[idx] = news_list
-                    # 캐시에 저장 (10분 TTL)
+                    # 캐시에 저장 (10분 TTL) - 리드 포함
                     crawl_cache.set(f"keyword_news:{uncached_keywords[j]}", news_list)
             
             # 수집된 데이터를 바탕으로 AI 테마 브리핑 요약 (이것도 병렬)
