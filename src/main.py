@@ -34,6 +34,7 @@ from src.services.ai_tracker import record_prediction_snapshot
 from src.services.feedback_manager import generate_feedback_links_html
 from src.services.backtesting_scorer import generate_backtesting_report
 from src.utils.cache import crawl_cache
+from src.utils.deduplicator import deduplicate_news
 
 from src.services.notifier.email import EmailSender
 from src.services.notifier.telegram import TelegramSender
@@ -144,7 +145,7 @@ async def run_pipeline() -> None:
                     for res in chunk:
                         if isinstance(res, list):
                             flat_news.extend(res)
-                    news_list = flat_news[:7]  # 토큰 초과 방지
+                    news_list = deduplicate_news(flat_news)[:7]  # 중복 제거 후 토큰 초과 방지
                     kw_news_results[idx] = news_list
                     # 캐시에 저장 (10분 TTL)
                     crawl_cache.set(f"keyword_news:{uncached_keywords[j]}", news_list)
