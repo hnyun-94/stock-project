@@ -33,7 +33,7 @@
   - `main.py`의 순차 for 루프 → `asyncio.gather` 완전 병렬화
   - 기대 효과: 사용자당 50% 시간 단축
 
-- [ ] **REQ-F03: 크롤링 결과 인메모리 캐싱**
+- [x] **REQ-F03: 크롤링 결과 인메모리 캐싱** ✅ PR #8
   - `src/utils/cache.py` TTLCache 클래스 구현, 동일 키워드 크롤링 결과 재사용
 
 - [ ] **REQ-P05: Gemini Batch 호출 도입 (멀티 테마 일괄 분석)** ← 🆕
@@ -61,7 +61,7 @@
 
 ### Sprint 2 - Data Quality
 
-- [ ] **REQ-F02: 뉴스 중복 제거 (Deduplication)**
+- [x] **REQ-F02: 뉴스 중복 제거 (Deduplication)** ✅ PR #9
   - `src/utils/deduplicator.py` 신규 생성, 제목 유사도 85% 이상 필터링
 
 ### Sprint 3 - AI Enhancement
@@ -93,7 +93,7 @@
 - [x] **REQ-Q05: 민감 정보 기본값 보안 강화** ✅ PR #1
   - `feedback_server.py`의 `WEBHOOK_SECRET` 기본값 제거, 미설정 시 서버 차단
 
-- [ ] **REQ-Q06: 루트 디렉토리 산재 파일 정리**
+- [x] **REQ-Q06: 루트 디렉토리 산재 파일 정리** ✅ PR #7
   - 일회성 스크립트 `scripts/` 이동 또는 삭제
 
 ### Sprint 4 - Quality (품질 확보)
@@ -106,7 +106,7 @@
 
 ### Sprint 4 확장 (Gap Analysis 보완)
 
-- [ ] **REQ-Q07: 동기 Notion 호출 비동기 전환** ← 🆕
+- [x] **REQ-Q07: 동기 Notion 호출 비동기 전환** ← 🆕 ✅ PR #10
   - `main.py`의 `fetch_prompts_from_notion()`, `fetch_active_users()`를 `asyncio.to_thread()`로 래핑
 
 - [ ] **REQ-P06: JSON → SQLite 마이그레이션** ← 🆕
@@ -116,4 +116,4 @@
 
 _작성일: 2026-03-02 | 상세 요구사항: `requirements/04_phase6_optimization_requirements.md` 참조_
 _진행 Task 명세: `task/phase6_task.md` 참조_
-_갱신일: 2026-03-02 | Sprint 1 개발 완료 (8 Task, 6 PR) - 체크리스트 갱신_
+_갱신일: 2026-03-02 22:17 | Sprint 2 개발 완료 (12 Task, 10 PR) - 체크리스트 갱신_
