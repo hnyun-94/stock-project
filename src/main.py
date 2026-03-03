@@ -33,6 +33,7 @@ from src.services.user_manager import fetch_active_users
 from src.services.ai_tracker import record_prediction_snapshot
 from src.services.feedback_manager import generate_feedback_links_html
 from src.services.backtesting_scorer import generate_backtesting_report
+from src.utils.cache import crawl_cache
 
 from src.services.notifier.email import EmailSender
 from src.services.notifier.telegram import TelegramSender
@@ -104,31 +105,49 @@ async def run_pipeline() -> None:
                 theme_briefings.append(backtest_report_md)
             theme_briefings.append(common_theme_md)
             
-            # 사용자 키워드 뉴스 완전 병렬 크롤링 [Task 6.2, REQ-P02]
-            # 기존: 키워드별 순차 루프 → 변경: 모든 키워드의 모든 소스를 한 번에 병렬 처리
+            # 사용자 키워드 뉴스 완전 병렬 크롤링 + 캐시 [Task 6.2/6.8, REQ-P02/F03]
+            # 동일 키워드가 여러 사용자에게 등록된 경우 캐시에서 즉시 반환합니다.
             keywords_to_search = user.keywords[:2]
-            global_logger.info(f"      - {keywords_to_search} 키워드 뉴스 완전 병렬 수집 중 (네이버,다음,구글)...")
+            global_logger.info(f"      - {keywords_to_search} 키워드 뉴스 수집 중 (캐시 적용)...")
             
-            # 모든 키워드 × 모든 소스를 flat하게 gather (최대 2키워드 × 3소스 = 6개 동시 요청)
-            all_crawl_tasks = []
-            for kw in keywords_to_search:
-                all_crawl_tasks.extend([
-                    search_news_by_keyword(kw, 3),
-                    search_daum_news_by_keyword(kw, 3),
-                    search_google_news_by_keyword(kw, 3),
-                ])
-            
-            all_results = await asyncio.gather(*all_crawl_tasks, return_exceptions=True)
-            
-            # 결과를 키워드별로 3개씩 그룹핑 (네이버, 다음, 구글 순)
+            # 캐시 미스/히트 분리 - 캐시에 있는 키워드는 바로 사용, 없는 키워드만 크롤링
             kw_news_results = []
-            for i in range(0, len(all_results), 3):
-                chunk = all_results[i:i+3]
-                flat_news = []
-                for res in chunk:
-                    if isinstance(res, list):
-                        flat_news.extend(res)
-                kw_news_results.append(flat_news[:7])  # 토큰 초과 방지: 최대 7개
+            uncached_keywords = []
+            uncached_indices = []
+            
+            for i, kw in enumerate(keywords_to_search):
+                cached = crawl_cache.get(f"keyword_news:{kw}")
+                if cached is not None:
+                    kw_news_results.append(cached)
+                    global_logger.info(f"        🎯 '{kw}' 캐시 적중 - 크롤링 생략")
+                else:
+                    kw_news_results.append(None)  # placeholder
+                    uncached_keywords.append(kw)
+                    uncached_indices.append(i)
+            
+            # 캐시 미스된 키워드만 병렬 크롤링
+            if uncached_keywords:
+                all_crawl_tasks = []
+                for kw in uncached_keywords:
+                    all_crawl_tasks.extend([
+                        search_news_by_keyword(kw, 3),
+                        search_daum_news_by_keyword(kw, 3),
+                        search_google_news_by_keyword(kw, 3),
+                    ])
+                
+                all_results = await asyncio.gather(*all_crawl_tasks, return_exceptions=True)
+                
+                # 결과를 키워드별로 3개씩 그룹핑 + 캐시 저장
+                for j, idx in enumerate(uncached_indices):
+                    chunk = all_results[j*3:(j+1)*3]
+                    flat_news = []
+                    for res in chunk:
+                        if isinstance(res, list):
+                            flat_news.extend(res)
+                    news_list = flat_news[:7]  # 토큰 초과 방지
+                    kw_news_results[idx] = news_list
+                    # 캐시에 저장 (10분 TTL)
+                    crawl_cache.set(f"keyword_news:{uncached_keywords[j]}", news_list)
             
             # 수집된 데이터를 바탕으로 AI 테마 브리핑 요약 (이것도 병렬)
             keyword_md_tasks = []
