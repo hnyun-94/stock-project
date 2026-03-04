@@ -15,6 +15,7 @@ from src.models import MarketIndex, NewsArticle, CommunityPost, SearchTrend
 from src.utils.logger import global_logger
 from src.utils.circuit_breaker import async_circuit_breaker
 from src.services.prompt_manager import get_cached_prompt
+from src.services.prompt_tuner import get_tuning_adjustments, apply_tuning_to_prompt
 
 # 제미나이 API 호출 병목/Rate Limit 15RPM 방지를 위한 Semaphore 및 딜레이
 _gemini_sema = asyncio.Semaphore(2)
@@ -117,7 +118,12 @@ async def generate_market_summary(market_indices: List[MarketIndex], market_news
             )
             model = "gemini-1.5-flash"
             temperature = 0.5
-        
+
+        # 피드백 기반 자동 프롬프트 튜닝 [REQ-F06]
+        adjustments = get_tuning_adjustments()
+        prompt = apply_tuning_to_prompt(prompt, adjustments)
+        temperature = max(0.1, min(1.0, temperature + adjustments["temperature_delta"]))
+
         response_text = await safe_gemini_call(prompt, model=model, temperature=temperature)
         return response_text
         
