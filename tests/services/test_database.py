@@ -76,6 +76,34 @@ class TestDatabase(unittest.TestCase):
         self.db.insert_snapshot("B", "종목B", "분석B")
         snapshots = self.db.get_recent_snapshots(limit=2)
         self.assertEqual(snapshots[0]["user_name"], "B")  # 최신이 먼저
+    # --- 스코어링 테스트 [REQ-F05] ---
+
+    def test_update_snapshot_score(self):
+        """스냅샷 적중률 점수 업데이트."""
+        self.db.insert_snapshot("A", "종목A", "분석A")
+        snap = self.db.get_recent_snapshots(limit=1)[0]
+        self.db.update_snapshot_score(snap["id"], 0.85)
+        updated = self.db.get_recent_snapshots(limit=1)[0]
+        self.assertEqual(updated["accuracy_score"], 0.85)
+
+    def test_average_accuracy(self):
+        """평균 적중률 계산."""
+        self.db.insert_snapshot("A", "종목A", "분석A")
+        self.db.insert_snapshot("B", "종목B", "분석B")
+        snaps = self.db.get_recent_snapshots(limit=2)
+        self.db.update_snapshot_score(snaps[0]["id"], 0.8)
+        self.db.update_snapshot_score(snaps[1]["id"], 0.6)
+        avg = self.db.get_average_accuracy(days=1)
+        self.assertEqual(avg, 0.7)
+
+    def test_unscored_snapshots(self):
+        """미채점 스냅샷 조회."""
+        self.db.insert_snapshot("A", "종목A", "분석A")
+        self.db.insert_snapshot("B", "종목B", "분석B")
+        snaps = self.db.get_recent_snapshots(limit=2)
+        self.db.update_snapshot_score(snaps[0]["id"], 0.5)
+        unscored = self.db.get_unscored_snapshots()
+        self.assertEqual(len(unscored), 1)
 
 
 if __name__ == "__main__":
