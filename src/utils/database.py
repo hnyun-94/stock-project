@@ -68,7 +68,8 @@ class Database:
                 timestamp TEXT NOT NULL,
                 user_name TEXT NOT NULL,
                 holdings TEXT NOT NULL,
-                analysis_snip TEXT NOT NULL
+                analysis_snip TEXT NOT NULL,
+                accuracy_score REAL DEFAULT NULL
             );
 
             CREATE INDEX IF NOT EXISTS idx_feedback_user
@@ -170,6 +171,51 @@ class Database:
         """데이터베이스 연결을 닫습니다."""
         self._conn.close()
         global_logger.info("🗄️ [DB] SQLite 연결 종료")
+
+    def update_snapshot_score(self, snapshot_id: int, score: float) -> None:
+        """예측 스냅샷의 적중률 점수를 업데이트합니다.
+
+        Args:
+            snapshot_id: 스냅샷 ID
+            score: 적중률 점수 (0.0 ~ 1.0)
+        """
+        self._conn.execute(
+            "UPDATE prediction_snapshots SET accuracy_score = ? WHERE id = ?",
+            (score, snapshot_id)
+        )
+        self._conn.commit()
+
+    def get_average_accuracy(self, days: int = 30) -> float:
+        """최근 N일간 예측 적중률 평균을 반환합니다.
+
+        Args:
+            days: 조회 기간
+
+        Returns:
+            평균 적중률. 데이터 없으면 0.0.
+        """
+        since = (datetime.now() - timedelta(days=days)).isoformat()
+        cursor = self._conn.execute(
+            "SELECT AVG(accuracy_score) FROM prediction_snapshots WHERE timestamp >= ? AND accuracy_score IS NOT NULL",
+            (since,)
+        )
+        result = cursor.fetchone()[0]
+        return round(result, 2) if result else 0.0
+
+    def get_unscored_snapshots(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """아직 점수가 매겨지지 않은 스냅샷을 조회합니다.
+
+        Args:
+            limit: 최대 조회 건수
+
+        Returns:
+            스냅샷 딕셔너리 리스트
+        """
+        cursor = self._conn.execute(
+            "SELECT * FROM prediction_snapshots WHERE accuracy_score IS NULL ORDER BY timestamp ASC LIMIT ?",
+            (limit,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
 
 
 def get_db(db_path: str = DB_PATH) -> Database:
