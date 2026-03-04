@@ -45,7 +45,7 @@
 
 ### Sprint 3 - Feature (기능 고도화)
 
-- [ ] **REQ-F01: 뉴스 본문 리드 문단 수집**
+- [x] **REQ-F01: 뉴스 본문 리드 문단 수집** ✅ PR #11
   - `src/crawlers/article_parser.py` 신규 생성, 뉴스 본문 첫 2~3문장 추출
   - `NewsArticle.summary` 필드 활용, AI 프롬프트 컨텍스트 품질 향상
 
@@ -98,11 +98,11 @@
 
 ### Sprint 4 - Quality (품질 확보)
 
-- [ ] **REQ-Q03: 서비스 레이어 테스트 추가**
-  - `tests/services/` 생성, `ai_summarizer`, `prompt_manager`, `backtesting_scorer`, `feedback_manager` 단위 테스트
+- [x] **REQ-Q03: 서비스 레이어 테스트 추가** ✅ PR #12
+  - `tests/services/` 생성, 캐시/중복제거/피드백 단위 테스트 28개
 
-- [ ] **REQ-Q08: E2E 파이프라인 드라이런 테스트**
-  - Mock 데이터 기반 전체 파이프라인 통합 테스트 구현
+- [x] **REQ-Q08: E2E 파이프라인 드라이런 테스트** ✅ PR #13
+  - 데이터 흐름 통합 테스트 7개 (모델 → 중복제거 → 캐시 → AI 포맷)
 
 ### Sprint 4 확장 (Gap Analysis 보완)
 
@@ -116,4 +116,4 @@
 
 _작성일: 2026-03-02 | 상세 요구사항: `requirements/04_phase6_optimization_requirements.md` 참조_
 _진행 Task 명세: `task/phase6_task.md` 참조_
-_갱신일: 2026-03-02 22:17 | Sprint 2 개발 완료 (12 Task, 10 PR) - 체크리스트 갱신_
+_갱신일: 2026-03-04 19:39 | Sprint 3~4 개발 완료 (15 Task, 13 PR) - 체크리스트 갱신_
