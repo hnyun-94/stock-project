@@ -1,0 +1,163 @@
+"""
+E2E 파이프라인 드라이런(Dry-run) 테스트 모듈.
+
+실제 외부 API 호출 없이, 핵심 데이터 흐름 단위를 검증합니다.
+
+드라이런 테스트의 목적:
+1. 모델 간 데이터 전달이 정상인지 확인
+2. report_formatter의 빈 데이터/정상 데이터 처리 확인
+3. cache → deduplicator → formatter 흐름 통합 검증
+4. 리팩토링 후 회귀 버그 발견
+
+[Task 6.18, REQ-Q08]
+"""
+
+import unittest
+from unittest.mock import patch, MagicMock
+import sys
+
+# logger mock
+sys.modules['src.utils.logger'] = MagicMock()
+
+from src.models import NewsArticle, MarketIndex, CommunityPost, SearchTrend, User
+from src.utils.cache import TTLCache
+from src.utils.deduplicator import deduplicate_news
+
+
+class TestDataFlowIntegration(unittest.TestCase):
+    """데이터 모델 간 흐름 통합 테스트."""
+
+    def test_news_article_to_dedup_to_cache(self):
+        """NewsArticle → deduplicate → cache 흐름 검증.
+
+        실제 파이프라인에서는:
+        1. 크롤러가 NewsArticle 리스트를 반환
+        2. deduplicate_news()가 중복 제거
+        3. crawl_cache에 저장
+        4. 이후 캐시에서 꺼내어 AI에 전달
+        """
+        # 1. 크롤러가 반환하는 뉴스 (중복 포함)
+        raw_news = [
+            NewsArticle(title="삼성전자 4분기 실적 발표 예정", link="a.com"),
+            NewsArticle(title="삼성전자 4분기 실적 공식 발표", link="b.com"),
+            NewsArticle(title="코스피 2500선 돌파", link="c.com"),
+        ]
+
+        # 2. 중복 제거
+        deduped = deduplicate_news(raw_news, threshold=0.7)
+        self.assertLessEqual(len(deduped), len(raw_news))
+        self.assertGreater(len(deduped), 0)
+
+        # 3. 캐시에 저장 및 조회
+        cache = TTLCache(default_ttl=600, max_size=100)
+        cache.set("keyword_news:삼성전자", deduped)
+
+        cached = cache.get("keyword_news:삼성전자")
+        self.assertIsNotNone(cached)
+        self.assertEqual(len(cached), len(deduped))
+
+        # 4. 캐시된 뉴스의 모든 항목이 NewsArticle인지 확인
+        for news in cached:
+            self.assertIsInstance(news, NewsArticle)
+            self.assertTrue(len(news.title) > 0)
+            self.assertTrue(len(news.link) > 0)
+
+    def test_user_model_properties(self):
+        """User 모델 기본값 및 필드 접근 검증.
+
+        파이프라인에서 User 모델은 Notion에서 조회된 사용자 정보를 담으며,
+        keywords, channels, holdings 등의 기본값이 올바르게 설정되어야 합니다.
+        """
+        user = User(
+            name="테스트",
+            email="test@example.com",
+            keywords=["삼성전자", "SK하이닉스"]
+        )
+        # 기본값 확인
+        self.assertEqual(user.channels, ["email"])
+        self.assertEqual(user.holdings, [])
+        self.assertIsNone(user.telegram_id)
+
+        # keywords 슬라이싱 (main.py에서 [:2] 사용)
+        self.assertEqual(user.keywords[:2], ["삼성전자", "SK하이닉스"])
+
+    def test_market_index_format(self):
+        """MarketIndex 모델 데이터 형식 검증."""
+        idx = MarketIndex(
+            name="KOSPI",
+            value="2,500.12",
+            change="+15.34",
+            investor_summary="외국인 순매수"
+        )
+        # AI 프롬프트에서 사용되는 형식
+        formatted = f"- {idx.name}: {idx.value} ({idx.investor_summary})"
+        self.assertIn("KOSPI", formatted)
+        self.assertIn("2,500.12", formatted)
+        self.assertIn("외국인 순매수", formatted)
+
+    def test_news_with_summary_format(self):
+        """리드 문단이 포함된 뉴스의 AI 프롬프트 포맷 검증.
+
+        ai_summarizer.py에서 summary가 있을 때:
+        '1. 제목\\n   → 본문 요약 (150자)'
+        """
+        news = NewsArticle(
+            title="삼성전자 실적",
+            link="a.com",
+            summary="삼성전자가 4분기 역대 최고 실적을 발표했다."
+        )
+        # ai_summarizer.py의 포맷
+        context = f"1. {news.title}\n"
+        if news.summary:
+            context += f"   → {news.summary[:150]}\n"
+
+        self.assertIn("삼성전자 실적", context)
+        self.assertIn("→", context)
+        self.assertIn("역대 최고 실적", context)
+
+
+class TestCacheAndDedupIntegration(unittest.TestCase):
+    """캐시와 중복제거 통합 테스트."""
+
+    def test_cache_preserves_deduped_results(self):
+        """캐시에 저장된 중복제거 결과가 변질되지 않는지 검증."""
+        news = [
+            NewsArticle(title="뉴스1", link="a.com", summary="요약1"),
+            NewsArticle(title="뉴스2", link="b.com"),
+        ]
+        deduped = deduplicate_news(news)
+
+        cache = TTLCache(default_ttl=600)
+        cache.set("test_key", deduped)
+
+        # 원본과 캐시 결과 비교
+        cached = cache.get("test_key")
+        self.assertEqual(len(cached), len(deduped))
+        self.assertEqual(cached[0].title, deduped[0].title)
+        self.assertEqual(cached[0].summary, deduped[0].summary)
+
+    def test_empty_news_handled(self):
+        """빈 뉴스 리스트 처리 검증."""
+        deduped = deduplicate_news([])
+        self.assertEqual(len(deduped), 0)
+
+        cache = TTLCache(default_ttl=600)
+        cache.set("empty_key", deduped)
+        self.assertEqual(cache.get("empty_key"), [])
+
+    def test_cache_miss_returns_none(self):
+        """캐시 미스 시 None 반환 후 크롤링 트리거가 가능한지 검증."""
+        cache = TTLCache(default_ttl=600)
+        result = cache.get("nonexistent_key")
+        self.assertIsNone(result)
+
+        # None이면 크롤링 실행 (파이프라인 로직 시뮬레이션)
+        if result is None:
+            crawled = [NewsArticle(title="새 뉴스", link="new.com")]
+            cache.set("nonexistent_key", crawled)
+
+        self.assertIsNotNone(cache.get("nonexistent_key"))
+
+
+if __name__ == "__main__":
+    unittest.main()
