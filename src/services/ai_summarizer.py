@@ -39,30 +39,42 @@ def _get_client():
         _client = genai.Client(api_key=api_key)
     return _client
 
-@async_circuit_breaker(failure_threshold=2, recovery_timeout=120, fallback_value=lambda: "⚠️ [Circuit Open] 현재 AI 분석 서버 구간에 장애가 감지되어 요약 텍스트 생성을 건너뛰었습니다.")
-@retry(wait=wait_exponential(multiplier=5, min=10, max=60), stop=stop_after_attempt(5))
+@async_circuit_breaker(failure_threshold=5, recovery_timeout=300, fallback_value=lambda: "⚠️ [Circuit Open] 현재 AI 분석 서버 구간에 장애가 감지되어 요약 텍스트 생성을 건너뛰었습니다.")
+@retry(wait=wait_exponential(multiplier=3, min=5, max=30), stop=stop_after_attempt(3),
+       retry=retry_if_exception_type(Exception),
+       before_sleep=lambda retry_state: global_logger.warning(
+           f"🔄 [Gemini] 재시도 {retry_state.attempt_number}/3 - "
+           f"{retry_state.outcome.exception().__class__.__name__}: {retry_state.outcome.exception()}"
+       ))
 async def safe_gemini_call(prompt: str, model: str = 'gemini-1.5-flash', temperature: float = 0.5) -> str:
     """Gemini API 호출 시 429 에러 등을 대비한 안전한 래퍼 함수입니다."""
     client = _get_client()
     async with _gemini_sema:
         # Gemini API 호출이 무한정 멈추는 것을 방지하기 위해 90초 타임아웃을 설정합니다.
         # 실제 Gemini 응답은 10~30초이므로 90초면 충분한 여유를 제공합니다. [REQ-Q02]
-        response = await asyncio.wait_for(
-            client.aio.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=genai.types.GenerateContentConfig(
-                    temperature=temperature,
-                    safety_settings=[
-                        genai.types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-                        genai.types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
-                        genai.types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-                        genai.types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-                    ]
-                )
-            ),
-            timeout=90.0
-        )
+        try:
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=genai.types.GenerateContentConfig(
+                        temperature=temperature,
+                        safety_settings=[
+                            genai.types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                            genai.types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+                            genai.types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                            genai.types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                        ]
+                    )
+                ),
+                timeout=90.0
+            )
+        except asyncio.TimeoutError:
+            global_logger.error("⏰ [Gemini] API 호출 90초 타임아웃")
+            raise
+        except Exception as e:
+            global_logger.error(f"❌ [Gemini] API 호출 실패: {e.__class__.__name__}: {e}")
+            raise
         await asyncio.sleep(2)  # 분당 요청수 추가 방어
     return response.text
 

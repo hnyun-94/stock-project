@@ -6,6 +6,7 @@
 """
 
 from typing import List, Dict
+import os
 import aiohttp
 from src.crawlers.http_client import get_session
 from bs4 import BeautifulSoup
@@ -152,23 +153,28 @@ async def get_reddit_wallstreetbets(max_items: int = 5) -> List[CommunityPost]:
 
     입력:
         max_items (int, 선택): 수집할 최대 게시글 수. 기본값은 5.
-            예시: `5`
 
     반환값:
-        List[CommunityPost]: `CommunityPost` 객체 리스트.
-            각 객체는 게시글의 `title` (제목)과 `link` (링크)를 포함합니다.
-            `title`에는 해당 게시글의 추천수(`ups`)가 포함됩니다.
-            예시: `[CommunityPost(title='[WSB|추천:1234] My GME YOLO Update!', link='https://www.reddit.com/r/wallstreetbets/comments/...'), ...]`
+        List[CommunityPost]: 게시글 리스트. 실패 시 빈 리스트.
+
+    환경변수:
+        REDDIT_ENABLED: 'false'로 설정 시 크롤링을 건너뜁니다 (CI/CD용).
     """
+    # CI/CD 환경에서 Reddit API가 403을 반환하므로 비활성화 가능 [Fix: production-errors]
+    if os.environ.get("REDDIT_ENABLED", "true").lower() == "false":
+        global_logger.info("[Reddit] REDDIT_ENABLED=false → 크롤링 건너뜀")
+        return []
+
     url = f"https://www.reddit.com/r/wallstreetbets/hot.json?limit={max_items}"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        "User-Agent": f"stock-report-bot/1.0 (by /u/stock_report_bot)",
+        "Accept": "application/json",
     }
     
     posts = []
     try:
         session = await get_session()
-        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as res:
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as res:
             if res.status == 200:
                 data = await res.json()
                 children = data.get("data", {}).get("children", [])
@@ -182,9 +188,11 @@ async def get_reddit_wallstreetbets(max_items: int = 5) -> List[CommunityPost]:
                     
                     if title and permalink:
                         posts.append(CommunityPost(title=f"[WSB|추천:{upvotes}] {title}", link=full_link))
+            elif res.status == 403:
+                global_logger.warning(f"[Reddit] 403 Forbidden - 봇 차단됨 (CI/CD 환경에서는 REDDIT_ENABLED=false 권장)")
             else:
-                global_logger.error(f"Reddit WSB API 호출 실패: HTTP {res.status}")
+                global_logger.warning(f"[Reddit] HTTP {res.status} - 수집 실패")
     except Exception as e:
-        global_logger.error(f"Reddit 크롤링 중 예외 발생: {e}")
+        global_logger.warning(f"[Reddit] 크롤링 예외: {e}")
         
     return posts
