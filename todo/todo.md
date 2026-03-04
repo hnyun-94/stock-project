@@ -49,8 +49,8 @@
   - `src/crawlers/article_parser.py` 신규 생성, 뉴스 본문 첫 2~3문장 추출
   - `NewsArticle.summary` 필드 활용, AI 프롬프트 컨텍스트 품질 향상
 
-- [ ] **REQ-F04: 감정 지표(Sentiment Score) 도입**
-  - 커뮤니티 데이터 감정 분석 → "시장 심리 온도계" 리포트 섹션 추가
+- [x] **REQ-F04: 감정 지표(Sentiment Score) 도입** ✅ PR #14
+  - 키워드 사전 기반 감정 분석 → "시장 심리 온도계" 리포트 섹션 추가
 
 - [ ] **REQ-F06: 별점 데이터 기반 자동 프롬프트 튜닝**
   - 피드백 평균 별점이 3.0 이하 시 프롬프트 자동 조정 루프 구축
@@ -66,8 +66,8 @@
 
 ### Sprint 3 - AI Enhancement
 
-- [ ] **REQ-F05: 백테스팅 채점 정량화**
-  - 과거 스냅샷 예측 vs 실제 종가 비교 정량적 스코어링 구현
+- [x] **REQ-F05: 백테스팅 채점 정량화** ✅ PR #16
+  - DB accuracy_score 컨럼 추가, 누적 적중률 통계 리포트 포함
 
 - [ ] **REQ-F07: 프롬프트 버전 관리 및 A/B 테스트**
   - Notion 프롬프트 DB에 `version` 필드 추가, 피드백과 연결 추적
@@ -109,11 +109,11 @@
 - [x] **REQ-Q07: 동기 Notion 호출 비동기 전환** ← 🆕 ✅ PR #10
   - `main.py`의 `fetch_prompts_from_notion()`, `fetch_active_users()`를 `asyncio.to_thread()`로 래핑
 
-- [ ] **REQ-P06: JSON → SQLite 마이그레이션** ← 🆕
-  - `src/utils/database.py` 신규 생성, `ai_tracker.py`/`feedback_manager.py` 교체
+- [x] **REQ-P06: JSON → SQLite 마이그레이션** ← 🆕 ✅ PR #15
+  - `src/utils/database.py` 신규 생성, `ai_tracker.py`/`feedback_manager.py`/`backtesting_scorer.py` 교체
 
 ---
 
 _작성일: 2026-03-02 | 상세 요구사항: `requirements/04_phase6_optimization_requirements.md` 참조_
 _진행 Task 명세: `task/phase6_task.md` 참조_
-_갱신일: 2026-03-04 19:39 | Sprint 3~4 개발 완료 (15 Task, 13 PR) - 체크리스트 갱신_
+_갱신일: 2026-03-05 06:54 | Phase 6 개발 완료 (18 Task, 16 PR) - 체크리스트 갱신_
