@@ -36,6 +36,7 @@ from src.services.feedback_manager import generate_feedback_links_html
 from src.services.backtesting_scorer import generate_backtesting_report
 from src.utils.cache import crawl_cache
 from src.utils.deduplicator import deduplicate_news
+from src.utils.sentiment import analyze_sentiment, format_sentiment_section
 
 from src.services.notifier.email import EmailSender
 from src.services.notifier.telegram import TelegramSender
@@ -94,6 +95,10 @@ async def run_pipeline() -> None:
         combined_community_posts = dc_posts + reddit_posts
         common_theme_md = await generate_theme_briefing("글로벌 및 국내 시장 민심(식갤+WSB)", market_news[:2], combined_community_posts)
 
+        # 시장 감정 지표 분석 [Task 6.19, REQ-F04]
+        sentiment_score, sentiment_label = analyze_sentiment(market_news, combined_community_posts)
+        sentiment_md = format_sentiment_section(sentiment_score, sentiment_label)
+
         # 과거 스냅샷 적중률 분석 (PM Task)
         global_logger.info("[+] 과거 AI 예측 백테스팅(Scoring) 분석 중...")
         backtest_report_md = await generate_backtesting_report()
@@ -106,6 +111,7 @@ async def run_pipeline() -> None:
             theme_briefings = []
             if backtest_report_md:
                 theme_briefings.append(backtest_report_md)
+            theme_briefings.append(sentiment_md)  # 시장 심리 온도계 [REQ-F04]
             theme_briefings.append(common_theme_md)
             
             # 사용자 키워드 뉴스 완전 병렬 크롤링 + 캐시 [Task 6.2/6.8, REQ-P02/F03]
