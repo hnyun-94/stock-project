@@ -4,56 +4,26 @@
 이 모듈은 AI 요약 리포트에 대한 사용자 피드백(별점, 코멘트)을 기록하고,
 HMAC-SHA256 서명이 포함된 보안 피드백 링크를 생성하는 기능을 제공합니다.
 
-주요 기능:
-- record_feedback(): 피드백 데이터를 JSON 파일에 적재
-- generate_feedback_link(): 별점별 HMAC 서명 포함 URL 생성
-- generate_feedback_links_html(): 이메일 본문에 삽입할 별점 1~5 링크를 HTML로 생성
+저장소: SQLite DB (기존 JSON 파일에서 마이그레이션됨) [REQ-P06]
 """
 
 import os
-import json
 import hmac
 import hashlib
-import logging
-from typing import Dict, Any, List
+from src.utils.database import get_db
 from src.utils.logger import global_logger
-
-FEEDBACK_FILE = "logging/user_feedback.json"
 
 
 def record_feedback(user_name: str, score: int, comment: str = ""):
+    """피드백을 SQLite DB에 기록합니다.
+
+    Args:
+        user_name: 평가자 이름
+        score: 별점 (1~5)
+        comment: 추가 코멘트
     """
-    역할 (Role):
-        AI 요약 리포트에 대한 사용자 피드백(평점, 코멘트)을 파일/DB에 적재합니다.
-    입력 (Input):
-        user_name (str): 평가를 남긴 구독자의 이름
-        score (int): 평가 점수 (예: 1~5점)
-        comment (str): 사용자의 추가 의견 (옵션)
-    반환값 (Output): None
-    """
-    os.makedirs(os.path.dirname(FEEDBACK_FILE), exist_ok=True)
-
-    from datetime import datetime
-    record = {
-        "timestamp": datetime.now().isoformat(),
-        "user_name": user_name,
-        "score": score,
-        "comment": comment
-    }
-
-    data = []
-    if os.path.exists(FEEDBACK_FILE):
-        try:
-            with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception as e:
-            global_logger.warning(f"피드백 파일 읽기 실패: {e}")
-
-    data.append(record)
-    with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    global_logger.info(f"💌 [Feedback] {user_name}님의 피드백({score}점)이 기록되었습니다.")
+    db = get_db()
+    db.insert_feedback(user_name, score, comment)
 
 
 def _create_signature(user_name: str, score: int) -> str:
