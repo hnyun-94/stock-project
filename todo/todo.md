@@ -52,8 +52,8 @@
 - [x] **REQ-F04: 감정 지표(Sentiment Score) 도입** ✅ PR #14
   - 키워드 사전 기반 감정 분석 → "시장 심리 온도계" 리포트 섹션 추가
 
-- [ ] **REQ-F06: 별점 데이터 기반 자동 프롬프트 튜닝**
-  - 피드백 평균 별점이 3.0 이하 시 프롬프트 자동 조정 루프 구축
+- [x] **REQ-F06: 별점 데이터 기반 자동 프롬프트 튜닝** ✅ PR #17
+  - 피드백 평균 별점 기반 temperature/스타일 지시어 자동 조정
 
 ---
 
@@ -69,8 +69,8 @@
 - [x] **REQ-F05: 백테스팅 채점 정량화** ✅ PR #16
   - DB accuracy_score 컨럼 추가, 누적 적중률 통계 리포트 포함
 
-- [ ] **REQ-F07: 프롬프트 버전 관리 및 A/B 테스트**
-  - Notion 프롬프트 DB에 `version` 필드 추가, 피드백과 연결 추적
+- [x] **REQ-F07: 프롬프트 버전 관리 및 A/B 테스트** ✅ PR #18
+  - 해시 기반 일관된 A/B 그룹 배정, DB 사용 이력 추적
 
 - [ ] **Structured Output (JSON Mode) 도입**
   - Gemini `response_mime_type: "application/json"` 활용, 리포트 포맷 일관성 확보
@@ -116,4 +116,4 @@
 
 _작성일: 2026-03-02 | 상세 요구사항: `requirements/04_phase6_optimization_requirements.md` 참조_
 _진행 Task 명세: `task/phase6_task.md` 참조_
-_갱신일: 2026-03-05 06:54 | Phase 6 개발 완료 (18 Task, 16 PR) - 체크리스트 갱신_
+_갱신일: 2026-03-05 07:30 | Phase 6 전체 완료 (20 Task, 18 PR, 70 Tests) - ALL DONE_
