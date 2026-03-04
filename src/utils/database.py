@@ -78,6 +78,17 @@ class Database:
                 ON feedbacks(timestamp);
             CREATE INDEX IF NOT EXISTS idx_snapshot_timestamp
                 ON prediction_snapshots(timestamp);
+
+            CREATE TABLE IF NOT EXISTS prompt_usage_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_name TEXT NOT NULL,
+                prompt_type TEXT NOT NULL,
+                version TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_prompt_usage_type
+                ON prompt_usage_log(prompt_type);
         """)
         self._conn.commit()
 
