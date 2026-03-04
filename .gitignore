@@ -30,3 +30,4 @@ prediction_snapshots.json
 
 # Ruff / Linters
 .ruff_cache/
+.tmp/
