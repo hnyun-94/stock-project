@@ -36,8 +36,9 @@
 - [x] **REQ-F03: 크롤링 결과 인메모리 캐싱** ✅ PR #8
   - `src/utils/cache.py` TTLCache 클래스 구현, 동일 키워드 크롤링 결과 재사용
 
-- [ ] **REQ-P05: Gemini Batch 호출 도입 (멀티 테마 일괄 분석)** ← 🆕
-  - 여러 테마를 하나의 프롬프트로 통합 → API 호출 60% 절감
+- [x] **REQ-P05: Gemini Batch 호출 도입 (멀티 테마 일괄 분석)** ✅ 2026-03-07
+  - `generate_theme_briefings_batch()` 도입, 사용자 키워드별 개별 호출 → 배치 1회 호출로 통합
+  - JSON 파싱 실패 시 기존 개별 호출 fallback으로 안정성 유지
 
 ---
 
@@ -72,9 +73,9 @@
 - [x] **REQ-F07: 프롬프트 버전 관리 및 A/B 테스트** ✅ PR #18
   - 해시 기반 일관된 A/B 그룹 배정, DB 사용 이력 추적
 
-- [ ] **Structured Output (JSON Mode) 도입**
-  - Gemini `response_mime_type: "application/json"` 활용, 리포트 포맷 일관성 확보
-  - → REQ-P05(Gemini Batch 호출)에서 함께 처리 가능
+- [x] **Structured Output (JSON Mode) 도입** ✅ 2026-03-07
+  - Gemini `response_mime_type: "application/json"` 적용 (배치 테마 브리핑 경로)
+  - `tests/services/test_ai_summarizer.py`로 JSON 파싱/폴백 단위 테스트 추가
 
 ---
 
@@ -116,4 +117,4 @@
 
 _작성일: 2026-03-02 | 상세 요구사항: `requirements/04_phase6_optimization_requirements.md` 참조_
 _진행 Task 명세: `task/phase6_task.md` 참조_
-_갱신일: 2026-03-05 07:30 | Phase 6 전체 완료 (20 Task, 18 PR, 70 Tests) - ALL DONE_
+_갱신일: 2026-03-07 02:30 | Phase 6 최적화 항목 최신화 (REQ-P05 + Structured Output 반영, 74 Tests PASS)_
