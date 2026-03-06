@@ -8,8 +8,10 @@
 
 import os
 import sys
+import re
 import traceback
 import asyncio
+from datetime import datetime
 from dotenv import load_dotenv
 
 # 스크립트 실행을 위해 환경변수 및 모듈 경로 로드
@@ -27,8 +29,23 @@ from src.crawlers.article_parser import enrich_news_with_leads
 from src.crawlers.http_client import close_session
 from src.crawlers.browser_pool import BrowserPool
 
-from src.services.ai_summarizer import generate_market_summary, generate_theme_briefing, generate_personalized_portfolio_analysis
+from src.services.ai_summarizer import (
+    generate_market_summary,
+    generate_personalized_portfolio_analysis,
+    generate_theme_briefing,
+    generate_theme_briefings_batch,
+)
 from src.services.prompt_manager import fetch_prompts_from_notion
+from src.services.market_source_governance import (
+    evaluate_active_sources,
+    get_default_source_policies,
+    parse_active_source_ids,
+)
+from src.services.market_signal_summary import (
+    PricePoint,
+    build_market_snapshot,
+    render_market_snapshot_markdown,
+)
 from src.utils.report_formatter import build_markdown_report
 from src.services.user_manager import fetch_active_users
 from src.services.ai_tracker import record_prediction_snapshot
@@ -37,11 +54,133 @@ from src.services.backtesting_scorer import generate_backtesting_report
 from src.utils.cache import crawl_cache
 from src.utils.deduplicator import deduplicate_news
 from src.utils.sentiment import analyze_sentiment, format_sentiment_section
+from src.utils.database import close_db
 
 from src.services.notifier.email import EmailSender
 from src.services.notifier.telegram import TelegramSender
 from src.services.notifier.queue_worker import global_message_queue, NotificationAction
 from src.utils.logger import global_logger, log_critical_error
+
+
+def _parse_int_env(env_key: str, default_value: int) -> int:
+    """정수 환경변수를 안전하게 파싱합니다."""
+    raw = os.getenv(env_key, "").strip()
+    if not raw:
+        return default_value
+    try:
+        parsed = int(raw)
+        return parsed if parsed > 0 else default_value
+    except ValueError:
+        global_logger.warning(
+            f"{env_key} 값이 정수가 아닙니다('{raw}'). 기본값 {default_value}로 대체합니다."
+        )
+        return default_value
+
+
+def _is_truthy(raw: str) -> bool:
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _run_source_governance_check() -> None:
+    """활성화된 데이터 소스의 무료 한도/정책 리스크를 점검합니다."""
+    default_sources = ["naver_datalab"]
+    active_sources = parse_active_source_ids(
+        os.getenv("ACTIVE_MARKET_SOURCES"),
+        default_source_ids=default_sources,
+    )
+    if not active_sources:
+        global_logger.warning(
+            "ACTIVE_MARKET_SOURCES가 비어 있어 소스 정책 검증을 건너뜁니다."
+        )
+        return
+
+    run_interval_hours = _parse_int_env("PIPELINE_RUN_INTERVAL_HOURS", 3)
+    default_calls_per_run = _parse_int_env("SOURCE_DEFAULT_CALLS_PER_RUN", 1)
+    strict_mode = _is_truthy(os.getenv("SOURCE_POLICY_STRICT", "false"))
+
+    evaluations = evaluate_active_sources(
+        active_sources,
+        run_interval_hours=run_interval_hours,
+        default_calls_per_run=default_calls_per_run,
+    )
+    policy_name_map = {
+        policy.source_id: policy.name for policy in get_default_source_policies()
+    }
+
+    blocking_statuses = {"blocked", "exceed"}
+    blocking_evaluations = []
+    for result in evaluations:
+        source_name = policy_name_map.get(result.source_id, result.source_id)
+        limit_text = (
+            str(result.free_daily_limit)
+            if result.free_daily_limit is not None
+            else "N/A"
+        )
+        message = (
+            f"[SourcePolicy] {source_name} ({result.source_id}) "
+            f"status={result.status}, daily={result.estimated_daily_calls}, "
+            f"limit={limit_text}, reason={result.reason}"
+        )
+        if result.status in {"ok", "conditional"}:
+            global_logger.info(message)
+        else:
+            global_logger.warning(message)
+        if result.status in blocking_statuses:
+            blocking_evaluations.append(result)
+
+    if strict_mode and blocking_evaluations:
+        blocked_sources = ", ".join(
+            sorted({evaluation.source_id for evaluation in blocking_evaluations})
+        )
+        raise RuntimeError(
+            "소스 정책 검증 실패(strict): "
+            f"{blocked_sources}. SOURCE_POLICY_STRICT=false 또는 호출 정책을 조정하세요."
+        )
+
+
+def _parse_numeric_value(raw_text: str) -> float | None:
+    """문자열에서 첫 번째 숫자 값을 파싱합니다."""
+    match = re.search(r"-?\d+(?:\.\d+)?", raw_text.replace(",", ""))
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
+
+
+def _build_market_snapshot_markdown(
+    market_indices,
+    market_news,
+    community_posts,
+    datalab_trends,
+) -> str:
+    """현재 수집 데이터 기반 정량 스냅샷 마크다운을 생성합니다."""
+    snapshot_date = datetime.now().strftime("%Y-%m-%d")
+    index_series: dict[str, list[PricePoint]] = {}
+    for item in market_indices:
+        close = _parse_numeric_value(item.value)
+        if close is None:
+            continue
+        index_series[item.name] = [PricePoint(date=snapshot_date, close=close)]
+
+    ratio_values = []
+    for trend in datalab_trends or []:
+        ratio = _parse_numeric_value(getattr(trend, "traffic", ""))
+        if ratio is not None:
+            ratio_values.append(ratio)
+    avg_trend_ratio = sum(ratio_values) / len(ratio_values) if ratio_values else None
+
+    snapshot = build_market_snapshot(
+        index_series=index_series,
+        event_counts={
+            "market_news": len(market_news or []),
+            "community_posts": len(community_posts or []),
+        },
+        keyword_trend_change_pct=avg_trend_ratio,
+    )
+    return render_market_snapshot_markdown(snapshot)
+
 
 async def run_pipeline() -> None:
     """
@@ -59,7 +198,10 @@ async def run_pipeline() -> None:
         없음 (None) - 실행 성공 여부는 콘솔 및 log 파일(`logging/` 폴더)에 자동으로 기록됩니다.
     """
     global_logger.info("=== 🚀 주식 리포트 생성 파이프라인 시작 ===")
-    
+
+    # 실행 시작 전 데이터 소스 정책/무료 한도 점검
+    _run_source_governance_check()
+
     # 0. Notion에서 동적 프롬프트 설정 (미리 캐싱) [Task 6.21, REQ-Q07]
     # 동기 함수를 asyncio.to_thread()로 래핑하여 이벤트 루프 블로킹 방지
     await asyncio.to_thread(fetch_prompts_from_notion)
@@ -99,6 +241,14 @@ async def run_pipeline() -> None:
         sentiment_score, sentiment_label = analyze_sentiment(market_news, combined_community_posts)
         sentiment_md = format_sentiment_section(sentiment_score, sentiment_label)
 
+        # 시장 정량 통계 스냅샷 [P1]
+        market_snapshot_md = _build_market_snapshot_markdown(
+            market_indices=market_indices,
+            market_news=market_news,
+            community_posts=combined_community_posts,
+            datalab_trends=datalab_trends,
+        )
+
         # 과거 스냅샷 적중률 분석 (PM Task)
         global_logger.info("[+] 과거 AI 예측 백테스팅(Scoring) 분석 중...")
         backtest_report_md = await generate_backtesting_report()
@@ -111,6 +261,8 @@ async def run_pipeline() -> None:
             theme_briefings = []
             if backtest_report_md:
                 theme_briefings.append(backtest_report_md)
+            if market_snapshot_md:
+                theme_briefings.append(market_snapshot_md)
             theme_briefings.append(sentiment_md)  # 시장 심리 온도계 [REQ-F04]
             theme_briefings.append(common_theme_md)
             
@@ -160,13 +312,16 @@ async def run_pipeline() -> None:
                     # 캐시에 저장 (10분 TTL) - 리드 포함
                     crawl_cache.set(f"keyword_news:{uncached_keywords[j]}", news_list)
             
-            # 수집된 데이터를 바탕으로 AI 테마 브리핑 요약 (이것도 병렬)
-            keyword_md_tasks = []
+            # 수집된 데이터를 바탕으로 AI 테마 브리핑 요약 (Gemini Batch 1회 호출)
+            theme_items = []
             for keyword, kw_news in zip(keywords_to_search, kw_news_results):
-                global_logger.info(f"      - '{keyword}' 테마 AI 요약 분석 큐 등록 중...")
-                keyword_md_tasks.append(generate_theme_briefing(keyword, kw_news, []))
-            # API 제한 관리를 위해 비동기 백그라운드 태스크로 한꺼번에 실행 (Semaphore가 동시성 제어함)
-            kw_md_results = await asyncio.gather(*keyword_md_tasks)
+                global_logger.info(f"      - '{keyword}' 테마 배치 요약 입력 구성 중...")
+                theme_items.append({
+                    "keyword": keyword,
+                    "keyword_news": kw_news or [],
+                    "community_posts": [],
+                })
+            kw_md_results = await generate_theme_briefings_batch(theme_items)
             theme_briefings.extend(kw_md_results)
 
             # 5. 초개인화 포트폴리오 분석 추가 (보유 종목이 있는 경우)
@@ -220,6 +375,7 @@ async def run_pipeline() -> None:
         # 파이프라인 종료 시 글로벌 HTTP 세션 및 브라우저 풀 자원 정리 [Task 6.1, 6.4]
         await close_session()
         await BrowserPool.cleanup()
+        close_db()
 
 async def main_with_timeout():
     try:
