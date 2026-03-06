@@ -46,7 +46,10 @@ from src.services.market_signal_summary import (
     build_market_snapshot,
     render_market_snapshot_markdown,
 )
-from src.services.market_external_connectors import collect_external_source_metrics
+from src.services.market_external_connectors import (
+    collect_external_source_snapshot,
+    render_external_connector_telemetry_markdown,
+)
 from src.utils.report_formatter import build_markdown_report
 from src.services.user_manager import fetch_active_users
 from src.services.ai_tracker import record_prediction_snapshot
@@ -248,8 +251,13 @@ async def run_pipeline() -> None:
         sentiment_score, sentiment_label = analyze_sentiment(market_news, combined_community_posts)
         sentiment_md = format_sentiment_section(sentiment_score, sentiment_label)
 
-        # 외부 무료 소스 커넥터 지표 수집 (옵션)
-        external_source_metrics = await collect_external_source_metrics()
+        # 외부 무료 소스 커넥터 지표 수집 + 텔레메트리 (옵션)
+        external_source_metrics, external_connector_results = (
+            await collect_external_source_snapshot()
+        )
+        external_telemetry_md = render_external_connector_telemetry_markdown(
+            external_connector_results
+        )
 
         # 시장 정량 통계 스냅샷 [P1]
         market_snapshot_md = _build_market_snapshot_markdown(
@@ -274,6 +282,8 @@ async def run_pipeline() -> None:
                 theme_briefings.append(backtest_report_md)
             if market_snapshot_md:
                 theme_briefings.append(market_snapshot_md)
+            if external_telemetry_md:
+                theme_briefings.append(external_telemetry_md)
             theme_briefings.append(sentiment_md)  # 시장 심리 온도계 [REQ-F04]
             theme_briefings.append(common_theme_md)
             

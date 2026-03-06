@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, Iterable, Optional
@@ -28,6 +29,8 @@ class ConnectorResult:
     status: str
     count: int
     detail: str
+    latency_ms: int = 0
+    extra_metrics: Optional[Dict[str, int]] = None
 
 
 ConnectorHandler = Callable[[], Awaitable[ConnectorResult]]
@@ -73,6 +76,27 @@ def _extract_data_go_count(payload: Dict[str, Any]) -> int:
         if isinstance(item, dict):
             return 1
     return 0
+
+
+def _categorize_opendart_reports(rows: list[Dict[str, Any]]) -> Dict[str, int]:
+    """Categorizes OpenDART reports to high-level buckets."""
+    categories = {
+        "earnings": 0,
+        "financing": 0,
+        "ownership": 0,
+        "other": 0,
+    }
+    for row in rows:
+        report_name = str(row.get("report_nm", ""))
+        if any(keyword in report_name for keyword in ["잠정", "매출액", "영업", "분기", "반기", "사업보고서"]):
+            categories["earnings"] += 1
+        elif any(keyword in report_name for keyword in ["유상증자", "무상증자", "전환사채", "교환사채", "신주인수권"]):
+            categories["financing"] += 1
+        elif any(keyword in report_name for keyword in ["최대주주", "임원", "대량보유", "주식등의대량보유"]):
+            categories["ownership"] += 1
+        else:
+            categories["other"] += 1
+    return categories
 
 
 async def _collect_data_go_stock_price_count() -> ConnectorResult:
@@ -146,11 +170,18 @@ async def _collect_opendart_disclosure_count() -> ConnectorResult:
             )
 
         rows = payload.get("list") or []
+        extra_metrics = {}
+        if isinstance(rows, list):
+            classified = _categorize_opendart_reports(rows)
+            for category, value in classified.items():
+                extra_metrics[f"opendart:{category}"] = value
+
         return ConnectorResult(
             source_id="opendart",
             status="ok",
             count=len(rows) if isinstance(rows, list) else 0,
             detail="opendart disclosure count collected",
+            extra_metrics=extra_metrics or None,
         )
     except Exception as exc:  # pragma: no cover - network branch
         return ConnectorResult("opendart", "error", 0, f"opendart request failed: {exc}")
@@ -237,15 +268,61 @@ def _resolve_external_sources(raw: Optional[str], default_source_ids: Iterable[s
     return parse_active_source_ids(raw, default_source_ids=default_source_ids)
 
 
-async def collect_external_source_metrics(
-    active_source_ids: Optional[list[str]] = None,
-) -> Dict[str, int]:
-    """Collects count metrics from enabled external sources.
+async def _execute_handler_with_timing(source_id: str, handler: ConnectorHandler) -> ConnectorResult:
+    """Executes connector handler with latency telemetry."""
+    started = time.perf_counter()
+    try:
+        result = await handler()
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        return ConnectorResult(
+            source_id=result.source_id,
+            status=result.status,
+            count=result.count,
+            detail=result.detail,
+            latency_ms=elapsed_ms,
+            extra_metrics=result.extra_metrics,
+        )
+    except Exception as exc:
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        return ConnectorResult(
+            source_id=source_id,
+            status="error",
+            count=0,
+            detail=f"unhandled exception: {exc}",
+            latency_ms=elapsed_ms,
+        )
 
-    Returns only successful metrics in `{source_id: count}` format.
-    """
+
+def _expand_result_metrics(result: ConnectorResult, metrics: Dict[str, int]) -> None:
+    """Adds source-level and extra metrics from connector result."""
+    metrics[result.source_id] = max(0, result.count)
+    if result.extra_metrics:
+        for key, value in result.extra_metrics.items():
+            metrics[key] = max(0, value)
+
+
+def render_external_connector_telemetry_markdown(results: list[ConnectorResult]) -> str:
+    """Renders connector runtime status to markdown section."""
+    if not results:
+        return ""
+
+    lines = ["## 🛰 외부 소스 텔레메트리"]
+    for result in results:
+        lines.append(
+            f"- {result.source_id}: status `{result.status}`, "
+            f"count {result.count}건, latency {result.latency_ms}ms"
+        )
+        if result.status != "ok":
+            lines.append(f"  - detail: {result.detail}")
+    return "\n".join(lines)
+
+
+async def collect_external_source_snapshot(
+    active_source_ids: Optional[list[str]] = None,
+) -> tuple[Dict[str, int], list[ConnectorResult]]:
+    """Collects external source metrics with detailed telemetry."""
     if not _is_truthy(os.getenv("EXTERNAL_CONNECTORS_ENABLED", "false")):
-        return {}
+        return {}, []
 
     default_sources = ["opendart", "sec_edgar", "fred", "fsc_stock_price"]
     source_ids = active_source_ids
@@ -262,24 +339,24 @@ async def collect_external_source_metrics(
         if handler is None:
             global_logger.info(f"[ExternalConnector] unsupported source skipped: {source_id}")
             continue
-        tasks.append(handler())
+        tasks.append(_execute_handler_with_timing(source_id, handler))
         task_sources.append(source_id)
 
     if not tasks:
-        return {}
+        return {}, []
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    results = await asyncio.gather(*tasks)
     metrics: Dict[str, int] = {}
+    telemetry: list[ConnectorResult] = []
 
     for source_id, result in zip(task_sources, results):
-        if isinstance(result, Exception):
-            global_logger.warning(f"[ExternalConnector] {source_id} failed: {result}")
-            continue
+        telemetry.append(result)
 
         if result.status == "ok":
-            metrics[result.source_id] = max(0, result.count)
+            _expand_result_metrics(result, metrics)
             global_logger.info(
-                f"[ExternalConnector] {result.source_id} ok count={result.count}"
+                f"[ExternalConnector] {result.source_id} ok "
+                f"count={result.count}, latency={result.latency_ms}ms"
             )
         elif result.status == "skip":
             global_logger.info(f"[ExternalConnector] {result.source_id} skipped: {result.detail}")
@@ -288,4 +365,12 @@ async def collect_external_source_metrics(
                 f"[ExternalConnector] {result.source_id} error: {result.detail}"
             )
 
+    return metrics, telemetry
+
+
+async def collect_external_source_metrics(
+    active_source_ids: Optional[list[str]] = None,
+) -> Dict[str, int]:
+    """Backwards-compatible wrapper returning only count metrics."""
+    metrics, _ = await collect_external_source_snapshot(active_source_ids=active_source_ids)
     return metrics
