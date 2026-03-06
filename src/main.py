@@ -46,6 +46,7 @@ from src.services.market_signal_summary import (
     build_market_snapshot,
     render_market_snapshot_markdown,
 )
+from src.services.market_external_connectors import collect_external_source_metrics
 from src.utils.report_formatter import build_markdown_report
 from src.services.user_manager import fetch_active_users
 from src.services.ai_tracker import record_prediction_snapshot
@@ -154,6 +155,7 @@ def _build_market_snapshot_markdown(
     market_news,
     community_posts,
     datalab_trends,
+    external_source_metrics=None,
 ) -> str:
     """현재 수집 데이터 기반 정량 스냅샷 마크다운을 생성합니다."""
     snapshot_date = datetime.now().strftime("%Y-%m-%d")
@@ -171,12 +173,17 @@ def _build_market_snapshot_markdown(
             ratio_values.append(ratio)
     avg_trend_ratio = sum(ratio_values) / len(ratio_values) if ratio_values else None
 
+    event_counts = {
+        "market_news": len(market_news or []),
+        "community_posts": len(community_posts or []),
+    }
+    if external_source_metrics:
+        for source_id, count in external_source_metrics.items():
+            event_counts[f"source:{source_id}"] = count
+
     snapshot = build_market_snapshot(
         index_series=index_series,
-        event_counts={
-            "market_news": len(market_news or []),
-            "community_posts": len(community_posts or []),
-        },
+        event_counts=event_counts,
         keyword_trend_change_pct=avg_trend_ratio,
     )
     return render_market_snapshot_markdown(snapshot)
@@ -241,12 +248,16 @@ async def run_pipeline() -> None:
         sentiment_score, sentiment_label = analyze_sentiment(market_news, combined_community_posts)
         sentiment_md = format_sentiment_section(sentiment_score, sentiment_label)
 
+        # 외부 무료 소스 커넥터 지표 수집 (옵션)
+        external_source_metrics = await collect_external_source_metrics()
+
         # 시장 정량 통계 스냅샷 [P1]
         market_snapshot_md = _build_market_snapshot_markdown(
             market_indices=market_indices,
             market_news=market_news,
             community_posts=combined_community_posts,
             datalab_trends=datalab_trends,
+            external_source_metrics=external_source_metrics,
         )
 
         # 과거 스냅샷 적중률 분석 (PM Task)
