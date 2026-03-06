@@ -101,6 +101,26 @@ class TestNewService(unittest.TestCase):
         self.assertTrue(result)
 ```
 
+### 커스텀 스킬 (Agent Skills) 생성 템플릿
+
+Codex의 역량 및 자동화를 확장하려면 `.agents/skills/<skill-name>/SKILL.md` 경로에 아래 형식으로 스킬을 정의하십시오.
+
+```yaml
+---
+name: 스킬 이름 (소문자, 하이픈)
+description: "스킬의 목적과 동작 방식 간략 요약"
+---
+
+# 스킬 제목
+
+## Usage Trigger
+이 스킬을 언제 실행해야 하는지 명시 (예: 배포 직전, 특정 에러 발생 시)
+
+## Instructions
+1. 실행할 구체적 동작
+2. 사용할 커맨더
+```
+
 ### 작업 완료 체크리스트 (Hooks 대체)
 
 Codex는 `pre-commit` 등 고정된 Git Hook 대신 Automation 지침으로 다음을 수행해야 함:

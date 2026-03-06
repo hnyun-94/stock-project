@@ -135,3 +135,4 @@ python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
 - `.local/HANDOVER.md`: 프로젝트 전체 히스토리, DB 스키마, 알려진 버그.
 - `.local/DEPENDENCY_MAP.md`: 리팩토링 시 수정 영향도가 가장 큰 파일 목록.
 - `.local/CODEX_GUIDE.md`: 커밋 메시지 템플릿 등 세부 룰.
+- `.agents/skills/`: 에이전트 자동화 스킬(PR 생성, 테스트 자동화 등) 모음.
