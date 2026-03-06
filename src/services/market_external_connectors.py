@@ -18,6 +18,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, Optional
 
 from src.crawlers.http_client import get_session
 from src.services.market_source_governance import parse_active_source_ids
+from src.utils.database import get_db
 from src.utils.logger import global_logger
 
 
@@ -317,6 +318,26 @@ def render_external_connector_telemetry_markdown(results: list[ConnectorResult])
     return "\n".join(lines)
 
 
+def _persist_connector_result(result: ConnectorResult) -> None:
+    """Persists connector telemetry into SQLite when enabled."""
+    if not _is_truthy(os.getenv("EXTERNAL_CONNECTOR_TELEMETRY_DB", "true")):
+        return
+
+    try:
+        db = get_db()
+        db.insert_connector_run(
+            source_id=result.source_id,
+            status=result.status,
+            count=result.count,
+            latency_ms=result.latency_ms,
+            detail=result.detail,
+        )
+    except Exception as exc:
+        global_logger.warning(
+            f"[ExternalConnector] telemetry DB save failed ({result.source_id}): {exc}"
+        )
+
+
 async def collect_external_source_snapshot(
     active_source_ids: Optional[list[str]] = None,
 ) -> tuple[Dict[str, int], list[ConnectorResult]]:
@@ -351,6 +372,7 @@ async def collect_external_source_snapshot(
 
     for source_id, result in zip(task_sources, results):
         telemetry.append(result)
+        _persist_connector_result(result)
 
         if result.status == "ok":
             _expand_result_metrics(result, metrics)

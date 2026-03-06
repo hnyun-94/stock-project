@@ -85,7 +85,14 @@ class TestCollectExternalMetrics(unittest.IsolatedAsyncioTestCase):
         }
 
         with (
-            patch.dict(os.environ, {"EXTERNAL_CONNECTORS_ENABLED": "true"}, clear=False),
+            patch.dict(
+                os.environ,
+                {
+                    "EXTERNAL_CONNECTORS_ENABLED": "true",
+                    "EXTERNAL_CONNECTOR_TELEMETRY_DB": "false",
+                },
+                clear=False,
+            ),
             patch.object(connectors, "_CONNECTOR_HANDLERS", handlers),
         ):
             result = await connectors.collect_external_source_metrics(
@@ -105,7 +112,14 @@ class TestCollectExternalMetrics(unittest.IsolatedAsyncioTestCase):
             )
 
         with (
-            patch.dict(os.environ, {"EXTERNAL_CONNECTORS_ENABLED": "true"}, clear=False),
+            patch.dict(
+                os.environ,
+                {
+                    "EXTERNAL_CONNECTORS_ENABLED": "true",
+                    "EXTERNAL_CONNECTOR_TELEMETRY_DB": "false",
+                },
+                clear=False,
+            ),
             patch.object(connectors, "_CONNECTOR_HANDLERS", {"opendart": opendart_handler}),
         ):
             result = await connectors.collect_external_source_metrics(
@@ -135,6 +149,7 @@ class TestCollectExternalMetrics(unittest.IsolatedAsyncioTestCase):
                 {
                     "EXTERNAL_CONNECTORS_ENABLED": "true",
                     "ACTIVE_MARKET_SOURCES": " opendart, sec_edgar ",
+                    "EXTERNAL_CONNECTOR_TELEMETRY_DB": "false",
                 },
                 clear=False,
             ),

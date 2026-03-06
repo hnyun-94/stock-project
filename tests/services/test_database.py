@@ -105,6 +105,33 @@ class TestDatabase(unittest.TestCase):
         unscored = self.db.get_unscored_snapshots()
         self.assertEqual(len(unscored), 1)
 
+    # --- 외부 커넥터 텔레메트리 테스트 ---
+
+    def test_insert_and_get_connector_run(self):
+        """외부 커넥터 실행 결과 저장/조회."""
+        self.db.insert_connector_run(
+            source_id="opendart",
+            status="ok",
+            count=12,
+            latency_ms=153,
+            detail="sample",
+        )
+        rows = self.db.get_recent_connector_runs(limit=5, source_id="opendart")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["status"], "ok")
+        self.assertEqual(rows[0]["count"], 12)
+        self.assertEqual(rows[0]["latency_ms"], 153)
+
+    def test_connector_success_rate(self):
+        """source별 성공률 계산."""
+        self.db.insert_connector_run("opendart", "ok", 3, 100)
+        self.db.insert_connector_run("opendart", "error", 0, 200, "timeout")
+        self.db.insert_connector_run("sec_edgar", "ok", 1, 90)
+
+        rates = self.db.get_connector_success_rate(days=1)
+        self.assertEqual(rates["opendart"], 0.5)
+        self.assertEqual(rates["sec_edgar"], 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()
