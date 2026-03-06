@@ -307,3 +307,178 @@ def build_existing_page_map(
         if title and title not in page_map:
             page_map[title] = page_id
     return page_map
+
+
+def read_prompt_file(file_path: str) -> str:
+    """Reads local prompt file content."""
+    content = Path(file_path).read_text(encoding="utf-8").strip()
+    if not content:
+        raise RuntimeError(f"프롬프트 파일이 비어있습니다: {file_path}")
+    return content
+
+
+def upsert_prompts(
+    client: httpx.Client,
+    db_id: str,
+    headers: Dict[str, str],
+    schema: Dict[str, str],
+    prompt_defs: List[PromptDefinition],
+    archive_empty_rows: bool,
+    dry_run: bool,
+) -> Dict[str, int]:
+    """Upserts prompt rows into Notion prompt DB."""
+    pages = query_all_pages(client, db_id, headers)
+    archived = 0
+    if archive_empty_rows:
+        filtered_pages: List[Dict[str, Any]] = []
+        for page in pages:
+            props = page.get("properties", {})
+            title = extract_plain_text(props.get(schema["title"], {})).strip()
+            key = extract_plain_text(props.get(schema["prompt_key"], {})).strip()
+            content = extract_plain_text(props.get(schema["content"], {})).strip()
+            if title or key or content:
+                filtered_pages.append(page)
+                continue
+
+            page_id = page.get("id")
+            if not page_id:
+                continue
+            if dry_run:
+                print(f"[DRY-RUN] ARCHIVE empty row page_id={page_id}")
+            else:
+                response = client.patch(
+                    f"{NOTION_BASE_URL}/pages/{page_id}",
+                    headers=headers,
+                    json={"archived": True},
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                print(f"[ARCHIVED] empty row page_id={page_id}")
+            archived += 1
+        pages = filtered_pages
+
+    existing_map = build_existing_page_map(pages, schema)
+
+    created = 0
+    updated = 0
+    for prompt_def in prompt_defs:
+        prompt_text = read_prompt_file(prompt_def.file_path)
+        properties_payload = build_page_properties_payload(prompt_def, prompt_text, schema)
+        page_id = existing_map.get(prompt_def.key) or existing_map.get(prompt_def.title)
+
+        if dry_run:
+            action = "UPDATE" if page_id else "CREATE"
+            print(f"[DRY-RUN] {action}: {prompt_def.key}")
+            continue
+
+        if page_id:
+            response = client.patch(
+                f"{NOTION_BASE_URL}/pages/{page_id}",
+                headers=headers,
+                json={"properties": properties_payload},
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            updated += 1
+            print(f"[UPDATED] {prompt_def.key} -> {page_id}")
+        else:
+            response = client.post(
+                f"{NOTION_BASE_URL}/pages",
+                headers=headers,
+                json={
+                    "parent": {"database_id": db_id},
+                    "properties": properties_payload,
+                },
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            created += 1
+            created_page_id = response.json().get("id", "<unknown>")
+            print(f"[CREATED] {prompt_def.key} -> {created_page_id}")
+
+    return {"created": created, "updated": updated, "archived": archived}
+
+
+def main() -> None:
+    """CLI entrypoint."""
+    parser = argparse.ArgumentParser(
+        description="Provision and sync Notion prompt database schema/data."
+    )
+    parser.add_argument(
+        "--cleanup-legacy",
+        action="store_true",
+        help="Remove legacy user columns from prompt DB schema.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print planned changes without applying writes.",
+    )
+    parser.add_argument(
+        "--archive-empty-rows",
+        action="store_true",
+        help="Archive DB rows that have empty Title/PromptKey/Content.",
+    )
+    args = parser.parse_args()
+
+    load_env_from_dotenv()
+    notion_token = os.getenv("NOTION_TOKEN", "").strip()
+    prompt_db_id = os.getenv("NOTION_PROMPT_DB_ID", "").strip()
+    default_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+
+    if not notion_token or not prompt_db_id:
+        raise RuntimeError(
+            "NOTION_TOKEN 또는 NOTION_PROMPT_DB_ID가 설정되지 않았습니다."
+        )
+
+    headers = build_headers(notion_token)
+    prompt_defs = load_local_prompts(default_model)
+
+    with httpx.Client() as client:
+        db = fetch_database(client, prompt_db_id, headers)
+        title_property_name = get_title_property_name(db.get("properties", {}))
+        schema_patch = build_required_schema_patch(
+            title_property_name=title_property_name,
+            existing_property_names=list(db.get("properties", {}).keys()),
+            cleanup_legacy=args.cleanup_legacy,
+        )
+
+        if args.dry_run:
+            print("[DRY-RUN] Schema patch to apply:")
+            print(schema_patch)
+            for prompt_def in prompt_defs:
+                print(
+                    f"[DRY-RUN] UPSERT prompt key={prompt_def.key} file={prompt_def.file_path}"
+                )
+            print("[DRY-RUN] No write operation executed.")
+            return
+        else:
+            response = client.patch(
+                f"{NOTION_BASE_URL}/databases/{prompt_db_id}",
+                headers=headers,
+                json=schema_patch,
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            print("[OK] Prompt DB schema patched.")
+
+        refreshed_db = fetch_database(client, prompt_db_id, headers)
+        schema = resolve_schema_names(refreshed_db.get("properties", {}))
+        result = upsert_prompts(
+            client=client,
+            db_id=prompt_db_id,
+            headers=headers,
+            schema=schema,
+            prompt_defs=prompt_defs,
+            archive_empty_rows=args.archive_empty_rows,
+            dry_run=args.dry_run,
+        )
+
+    print(
+        "[DONE] Prompt sync completed. "
+        f"created={result['created']}, updated={result['updated']}, archived={result['archived']}"
+    )
+
+
+if __name__ == "__main__":
+    main()
