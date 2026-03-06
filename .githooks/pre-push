@@ -18,7 +18,13 @@ check_commit_size_for_ref() {
   fi
 
   if [ "$remote_sha" = "$ZERO_SHA" ]; then
-    range="$local_sha"
+    if git rev-parse --verify origin/master >/dev/null 2>&1; then
+      range="origin/master..$local_sha"
+    elif git rev-parse --verify origin/main >/dev/null 2>&1; then
+      range="origin/main..$local_sha"
+    else
+      range="$local_sha"
+    fi
   else
     range="$remote_sha..$local_sha"
   fi
