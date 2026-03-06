@@ -89,6 +89,21 @@ class Database:
 
             CREATE INDEX IF NOT EXISTS idx_prompt_usage_type
                 ON prompt_usage_log(prompt_type);
+
+            CREATE TABLE IF NOT EXISTS external_connector_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0,
+                latency_ms INTEGER NOT NULL DEFAULT 0,
+                detail TEXT DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_connector_runs_source
+                ON external_connector_runs(source_id);
+            CREATE INDEX IF NOT EXISTS idx_connector_runs_timestamp
+                ON external_connector_runs(timestamp);
         """)
         self._conn.commit()
 
@@ -227,6 +242,84 @@ class Database:
             (limit,)
         )
         return [dict(row) for row in cursor.fetchall()]
+
+    # ==========================================
+    # 외부 커넥터 텔레메트리 메서드
+    # ==========================================
+
+    def insert_connector_run(
+        self,
+        source_id: str,
+        status: str,
+        count: int,
+        latency_ms: int,
+        detail: str = "",
+    ) -> None:
+        """외부 커넥터 실행 결과를 저장합니다."""
+        self._conn.execute(
+            (
+                "INSERT INTO external_connector_runs "
+                "(timestamp, source_id, status, count, latency_ms, detail) "
+                "VALUES (?, ?, ?, ?, ?, ?)"
+            ),
+            (
+                datetime.now().isoformat(),
+                source_id,
+                status,
+                max(0, int(count)),
+                max(0, int(latency_ms)),
+                detail or "",
+            ),
+        )
+        self._conn.commit()
+
+    def get_recent_connector_runs(
+        self,
+        limit: int = 50,
+        source_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """최근 외부 커넥터 실행 이력을 조회합니다."""
+        if source_id:
+            cursor = self._conn.execute(
+                (
+                    "SELECT * FROM external_connector_runs "
+                    "WHERE source_id = ? "
+                    "ORDER BY timestamp DESC LIMIT ?"
+                ),
+                (source_id, limit),
+            )
+        else:
+            cursor = self._conn.execute(
+                "SELECT * FROM external_connector_runs ORDER BY timestamp DESC LIMIT ?",
+                (limit,),
+            )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_connector_success_rate(self, days: int = 7) -> Dict[str, float]:
+        """최근 N일 기준 source별 성공률(status=ok 비중)을 반환합니다."""
+        since = (datetime.now() - timedelta(days=days)).isoformat()
+        cursor = self._conn.execute(
+            """
+            SELECT
+                source_id,
+                SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS success_count,
+                COUNT(*) AS total_count
+            FROM external_connector_runs
+            WHERE timestamp >= ?
+            GROUP BY source_id
+            """,
+            (since,),
+        )
+
+        rates: Dict[str, float] = {}
+        for row in cursor.fetchall():
+            total = row["total_count"] or 0
+            success = row["success_count"] or 0
+            if total <= 0:
+                rates[row["source_id"]] = 0.0
+            else:
+                rates[row["source_id"]] = round(success / total, 4)
+        return rates
 
 
 def get_db(db_path: str = DB_PATH) -> Database:
