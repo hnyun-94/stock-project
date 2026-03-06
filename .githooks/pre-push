@@ -1,0 +1,46 @@
+#!/bin/sh
+# Push 전 회귀 방지용 품질 게이트
+# - 프로젝트 규칙: services + e2e dryrun 테스트는 반드시 통과해야 함
+
+set -e
+
+MAX_COMMIT_LINES="${MAX_COMMIT_LINES:-400}"
+
+ZERO_SHA="0000000000000000000000000000000000000000"
+
+check_commit_size_for_ref() {
+  local_ref="$1"
+  local_sha="$2"
+  remote_sha="$3"
+
+  if [ "$local_sha" = "$ZERO_SHA" ]; then
+    return 0
+  fi
+
+  if [ "$remote_sha" = "$ZERO_SHA" ]; then
+    if git rev-parse --verify origin/master >/dev/null 2>&1; then
+      range="origin/master..$local_sha"
+    elif git rev-parse --verify origin/main >/dev/null 2>&1; then
+      range="origin/main..$local_sha"
+    else
+      range="$local_sha"
+    fi
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  scripts/check_commit_size.sh --range "$range" --max-lines "$MAX_COMMIT_LINES"
+}
+
+echo "[pre-push] 커밋 크기 검증 실행 (limit: ${MAX_COMMIT_LINES} lines/commit)"
+while read local_ref local_sha remote_ref remote_sha; do
+  check_commit_size_for_ref "$local_ref" "$local_sha" "$remote_sha"
+done
+
+echo "[pre-push] 품질 게이트 실행: tests/services + tests/test_e2e_dryrun.py"
+if command -v uv >/dev/null 2>&1; then
+  uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
+else
+  python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
+fi
+echo "[pre-push] 테스트 통과. push를 진행합니다."

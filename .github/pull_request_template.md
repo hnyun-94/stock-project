@@ -1,17 +1,59 @@
-## 📝 요약 (Summary)
+## Summary
+- 기능 단위 설명:
+- 범위 제외:
 
-[작업한 내용을 1~2줄로 명확하게 요약해 주세요. 예: `NAVER_CLIENT_ID` 환경 변수 템플릿 추가]
+## Delivery Workflow Checklist
+- [ ] 기능 단위로 분할 완료
+- [ ] 품질 게이트 통과 (`uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q`)
+- [ ] 커밋 크기 검증 통과 (`scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400`)
+- [ ] 커밋 및 push 완료
+- [ ] Multi-Role Review 작성
+- [ ] Critical 이슈 0개 또는 동일 PR에서 수정 완료
+- [ ] 머지 가능 상태 확인
 
-## 🔍 상세 작업 내용 (Details)
+## Commit Size Check
+- 기준: commit 당 (추가+삭제) <= 400 lines
+- 실행 결과:
+  - `scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400`
 
-- [코드의 어느 부분을 어떤 목적으로 수정했는지 구체적으로 적어주세요.]
-- [왜 이 방식을 선택했는지(설계나 기술적 근거) 기술해 주세요.]
-- [관련된 이슈 번호가 있다면 명시해 주세요. 예: Fixes #123]
+## Quality Gate
+- `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q`
+- 결과:
 
-## 💡 주니어 개발자 학습 포인트 (Learning Point)
+## Multi-Role Review
 
-> **💡 신입 개발자를 위한 친절한 설명 가이드**:  
-> 이번 PR에서 사용된 기술, 핵심 로직, 또는 잊지 말아야 할 주의사항을 신입 개발자가 튜토리얼을 읽듯 이해하기 쉽게 풀어 써주세요.
->
-> _예시:_  
-> _"우리가 `.env` 대신 `.env.template`을 별도로 관리하는 이유는 보안 때문입니다. 실제 비밀번호가 담긴 파일은 Git에 올라가면 큰 사고가 터질 수 있으므로 `.gitignore`로 막아두고, 빈 껍데기 설정만 PR로 공유하는 것이 모범 사례(Best Practice)입니다!"_
+### PM
+- Findings:
+- Severity (`critical`/`major`/`minor`):
+- Action:
+
+### TPM
+- Findings:
+- Severity (`critical`/`major`/`minor`):
+- Action:
+
+### 기획자
+- Findings:
+- Severity (`critical`/`major`/`minor`):
+- Action:
+
+### 개발자
+- Findings:
+- Severity (`critical`/`major`/`minor`):
+- Action:
+
+### 신입개발자
+- Findings:
+- Severity (`critical`/`major`/`minor`):
+- Action:
+
+### 운영자
+- Findings:
+- Severity (`critical`/`major`/`minor`):
+- Action:
+
+## Merge Decision
+- Critical issue exists?: Yes/No
+- Merge now?: Yes/No
+- Follow-up PR needed?: Yes/No
+- Follow-up scope:

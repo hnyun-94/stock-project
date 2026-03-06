@@ -1,0 +1,8 @@
+[sandbox]
+mode = "workspace-write"
+network = "allow"
+ask-for-approval = "on-request"
+
+[execution]
+# 터미널 hang 회피를 위해 승인 없는 장시간 명령은 지양
+default-timeout-ms = 120000
