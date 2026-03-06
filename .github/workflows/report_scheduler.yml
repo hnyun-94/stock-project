@@ -12,6 +12,10 @@ on:
   # 수동 실행을 위한 설정
   workflow_dispatch:
 
+concurrency:
+  group: stock-report-${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   build-and-run:
     runs-on: ubuntu-latest
@@ -20,6 +24,21 @@ jobs:
     steps:
       - name: 저장소 체크아웃 (Checkout Repository)
         uses: actions/checkout@v4
+
+      - name: SQLite 저장 디렉토리 준비
+        run: mkdir -p data
+
+      - name: SQLite 캐시 복구
+        id: sqlite-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/stock_project.db
+            data/stock_project.db-shm
+            data/stock_project.db-wal
+          key: stock-db-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            stock-db-${{ github.ref_name }}-
 
       - name: Python 환경 설정
         uses: actions/setup-python@v5
@@ -39,6 +58,8 @@ jobs:
         env:
           # GitHub Secrets에 등록된 환경 변수들을 여기서 주입합니다.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-2.5-flash
+          GEMINI_MODEL_CANDIDATES: gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash,gemini-2.0-flash-lite
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           NOTION_PROMPT_DB_ID: ${{ secrets.NOTION_PROMPT_DB_ID }}
@@ -47,6 +68,18 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          REDDIT_ENABLED: "false"
+          STOCK_DB_PATH: data/stock_project.db
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           uv run python -m src.main
+
+      - name: SQLite 캐시 저장
+        if: ${{ always() && hashFiles('data/stock_project.db') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/stock_project.db
+            data/stock_project.db-shm
+            data/stock_project.db-wal
+          key: ${{ steps.sqlite-cache-restore.outputs.cache-primary-key }}
