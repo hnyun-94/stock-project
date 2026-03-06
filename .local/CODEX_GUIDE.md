@@ -1,203 +1,135 @@
 # Codex 실행 가이드
 
-> Codex가 코드를 수정하거나 새 기능을 개발할 때 참조하는 실행 가이드입니다.
-> 반드시 `AGENTS.md` (프로젝트 루트)와 `HANDOVER.md`를 먼저 읽은 후 이 파일을 참조하세요.
+> OpenAI Codex Agent가 코드를 수정하거나 새 기능을 개발할 때 참조하는 환경/실행 가이드입니다.
+> 반드시 프로젝트 루트의 `AGENTS.md`와 상세 시스템인 `HANDOVER.md`를 먼저 읽은 후 이 파일을 참조하세요.
 
 ---
 
-## Quick Reference
+## 🛠 Codex Agent Environment & Sandbox Setup
+
+Codex는 강화된 샌드박스로 로컬 파일 변경과 네트워크 통신을 제한합니다. 이 프로젝트 원활한 실행을 위해 아래 설정을 확인/구성하십시오.
+
+### 1. `config.toml` 프로젝트 지역 설정 허용
+
+- 필요시 프로젝트 루트의 `.codex/config.toml` (또는 `~/.codex/config.toml`)에 대해 다음 권한을 에스컬레이션하세요:
+  ```toml
+  [sandbox]
+  mode = "workspace-write"  # 작업 영역의 파일만 읽고 씀
+  network = "allow"         # `aiohttp` 크롤링 및 Gemini API 연동을 허용하려면 필수
+  ask-for-approval = "on-request" # 민감한 명령 외에는 --full-auto 모드로 빠르게 진행
+  ```
+
+### 2. Full-Auto Error Mode (터미널 Hang 주의)
+
+- Codex가 `--full-auto`로 동작할 때 명령 실행 결과를 대기합니다.
+- 상호작용이 필요한 명령어(예: `vi`, `npm install` 중단, Pager 등)는 백그라운드에서 Hang을 유발합니다. 따라서 다음과 같이 무인 모드로만 실행합니다.
+
+---
+
+## 💻 Quick Reference
 
 ### 실행
 
 ```bash
-# 의존성 설치 (최초 1회)
+# 의존성 설치 (최초 1회, 인터랙티브 끄기)
 uv sync --frozen
 
-# 파이프라인 실행
+# 파이프라인 무인 실행
 uv run python -m src.main
-
-# 피드백 서버 실행
-uv run python -m src.apps.feedback_server
-
-# Docker
-docker-compose up --build
 ```
 
-### 테스트
+### 테스트 (Codex 권장 단위 검증)
 
 ```bash
-# 표준 테스트 (권장 — 외부 API 불필요)
+# 외부 API 없이 순수 비즈니스 로직(Services) 및 드라이런 검증
 python -m pytest tests/services/ tests/test_e2e_dryrun.py -v
 
-# 전체 테스트 (aiohttp/playwright 라이브 필요)
+# 크롤러 개발 후 외부 네트워크 정상 여부 확인 (aiohttp 라이브)
 python -m pytest tests/ -v
-
-# 특정 파일
-python -m pytest tests/services/test_cache.py -v
 ```
 
-### 문법 검증
+### 문법/구문 빠른 검증
 
 ```bash
-python -c "import ast; ast.parse(open('파일경로').read()); print('OK')"
-```
-
-### Git 워크플로우
-
-```bash
-git checkout -b feat/기능명
-# 코드 작성...
-git add 파일들
-git commit -m "feat: 설명 [Task x.x, REQ-xxx]"
-git push -u origin feat/기능명
-
-# ⚠️ PR body는 반드시 파일로 (hang 방지)
-echo "PR 내용" > .tmp/pr_body.md
-gh pr create --base master --head feat/기능명 --title "..." --body-file .tmp/pr_body.md
-
-gh pr merge N --squash --subject "..." --delete-branch
-rm -f .tmp/pr_body.md
+python -c "import ast; ast.parse(open('src/services/ai_summarizer.py').read()); print('OK')"
 ```
 
 ---
 
-## 코드 작성 규칙
+## 🤝 Project Codex Collaboration Rules
 
-### 새 모듈 작성 템플릿
+### 새 모듈 템플릿
 
 ```python
 """
-모듈 한줄 설명.
-
-상세 설명: 이 모듈의 역할, 다른 모듈과의 관계를 기술합니다.
-저장소/의존성: 어떤 외부 서비스나 DB에 의존하는지 명시합니다.
+모듈의 역할을 설명하는 한줄 docstring.
 
 [Task x.x, REQ-xxx]
+저장소/의존성: 어떤 DB나 API(Gemini, Notion 등)를 연동하는지 서술.
 """
 
-import os
+from typing import List, Dict
+import logging
 from src.utils.logger import global_logger
-from src.utils.database import get_db  # DB 필요 시
+from src.utils.database import get_db
 
-# 구현...
+# 기능 구현...
 ```
 
-### 새 테스트 작성 템플릿
+### 테스트 코드 템플릿 (Mock 필수)
 
 ```python
 """
-모듈명 단위 테스트 모듈.
-
-이 테스트는 외부 API 호출 없이 순수 로직만 검증합니다.
-
-[Task x.x, REQ-xxx]
+비즈니스 로직에 대한 순수 단위 테스트.
 """
 
 import unittest
 from unittest.mock import MagicMock
 import sys
 
-# ⚠️ 반드시 import 전에 로거 Mock 처리
+# ⚠️ 반드시 대상 모듈 import 직전에 logger를 Mock 처리하여 로그 I/O 차단
 sys.modules['src.utils.logger'] = MagicMock()
 
-from src.모듈 import 클래스_또는_함수
+from src.services.new_service import TargetClass
 
-
-class TestModuleName(unittest.TestCase):
-    """테스트 클래스."""
-
+class TestNewService(unittest.TestCase):
     def setUp(self):
-        """각 테스트 전 초기화."""
         pass
 
-    def test_기본_동작(self):
-        """정상 케이스 테스트."""
-        result = 함수()
-        self.assertEqual(result, expected)
-
-    def test_엣지_케이스(self):
-        """에러/경계값 테스트."""
-        pass
-
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_success_case(self):
+        result = TargetClass().do_something()
+        self.assertTrue(result)
 ```
 
-### 커밋 메시지 템플릿
+### 작업 완료 체크리스트 (Hooks 대체)
 
-```
-feat: 한줄 기능 설명 [Task x.x, REQ-xxx]
+Codex는 `pre-commit` 등 고정된 Git Hook 대신 Automation 지침으로 다음을 수행해야 함:
 
-## 변경 내용
+1. 테스트 실행 100% PASS 확인
+2. `DEPENDENCY_MAP.md` 갱신 (모듈 추가/삭제 시)
+3. `todo/todo.md` 체크 갱신
+4. `logging/YYYY-MM-DD.md` 파일에 요약본 기록
+5. 터미널 Hang Process Clear (`pkill -f`)
 
-### 신규: src/모듈/파일명.py
-- 기능 A 추가: 상세 설명
-- 기능 B 추가: 상세 설명
+### 커밋 및 PR 원칙
 
-### 수정: src/기존/파일명.py
-- 기존 동작 X를 Y로 변경한 이유 설명
-- 새 의존성 import 추가
-
-### 테스트: tests/services/test_파일명.py
-- N개 단위 테스트 추가
-- 커버리지: 주요 함수 전체
-```
-
-### PR Body 템플릿
-
-```markdown
-## PR 요약
-
-한줄 요약
-
-### 3관점 리뷰
-
-- **개발자**: 기술적 변경사항과 성능/안정성 영향
-- **검토자**: 코드 품질, 테스트 커버리지, 코딩 컨벤션 준수
-- **운영자**: 운영 환경에 미치는 영향, 필요한 설정 변경
-
-### 테스트 결과
-
-- `python -m pytest tests/services/ tests/test_e2e_dryrun.py -v`
-- XX passed in X.Xs
-
-머지 승인
-```
+- **커밋**: Conventional 커밋. 예) `feat: add sentiment model [REQ-101]`
+- **PR 생성**:
+  ```bash
+  echo "PR Description here" > .tmp/pr_body.md
+  gh pr create --head <BRANCH> --base master --title "<TITLE>" --body-file .tmp/pr_body.md
+  ```
+  _(절대로 `gh pr create --body "..."` 사용 금지)_
 
 ---
 
-## 주의사항
+## ⚠️ 취약점 알리미 (Danger Zones)
 
-### ❌ 절대 하지 말 것
+| 모듈 경로        | 위험성          | 파급 효과                                                                     |
+| ---------------- | --------------- | ----------------------------------------------------------------------------- |
+| `models.py`      | 🔴 **CRITICAL** | 전체 크롤러 및 DB 타입 에러 발생. 필드 추가/삭제 전 모든 모듈 검색 필수       |
+| `database.py`    | 🔴 **CRITICAL** | WAL 모드 및 스키마 구조. 컬럼 변경 시 이전 데이터 마이그레이션 전략 필요      |
+| `http_client.py` | 🟠 **HIGH**     | `aiohttp` 세션 풀 관리. 타임아웃/헤더 변경 시 Reddit 등 Strict 403 API에 타격 |
+| `main.py`        | 🟠 **HIGH**     | `asyncio.gather` 병행 처리 및 파이프라인 단계 로직 깨짐 시퀀스                |
 
-1. `gh pr create`에서 `--body` 인라인 사용 → **터미널 hang**
-2. 대화형 명령어 실행 (`vi`, `nano`, `less`, `more`, `python` REPL)
-3. `/tmp/`에 임시파일 생성 → `.tmp/` 사용
-4. 테스트 없이 PR 생성
-5. `todo/todo.md` 갱신 없이 세션 종료
-6. 커밋 메시지를 한줄로만 작성 (body 필수)
-7. `src/utils/logger.py`를 직접 import하는 테스트 코드 (Mock 필수)
-8. `models.py` 수정 시 영향도 미검증
-
-### ✅ 반드시 할 것
-
-1. 작업 완료 시 `logging/YYYY-MM-DD.md` 기록
-2. 에러 발생 시 `errorCase/YYYY-MM-DD_에러명.md` 기록
-3. 테스트 ALL PASS 확인 후 커밋
-4. PR merge 후 `todo/todo.md` 갱신
-5. 세션 종료 시 hang 프로세스 정리 (`pkill -f "gh pr"`)
-6. 파일 상단에 모듈 설명 docstring 작성
-7. 새 모듈 추가 시 `DEPENDENCY_MAP.md` 업데이트
-8. 코드 변경 시 `AGENTS.md`의 관련 섹션도 동기화 검토
-
-### ⚠️ 수정 시 주의가 필요한 파일
-
-| 파일                 | 위험도 | 이유                             |
-| -------------------- | :----: | -------------------------------- |
-| `models.py`          |   🔴   | 모든 크롤러+서비스가 의존        |
-| `database.py`        |   🔴   | 스키마 변경 시 마이그레이션 필요 |
-| `http_client.py`     |   🟠   | 모든 크롤러가 의존               |
-| `circuit_breaker.py` |   🟠   | 설정 변경이 AI 전체에 영향       |
-| `main.py`            |   🟠   | 파이프라인 흐름 변경             |
-| `ai_summarizer.py`   |   🟡   | CB+Retry+Semaphore 3중 보호      |
+_(※ 위 파일을 수정해야 할 경우 가장 보수적인 테스트를 선행하십시오.)_
