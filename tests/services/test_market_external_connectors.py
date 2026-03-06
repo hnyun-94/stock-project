@@ -35,6 +35,23 @@ class TestDataGoCountExtraction(unittest.TestCase):
         self.assertEqual(connectors._extract_data_go_count(payload), 3)
 
 
+class TestOpenDartCategorization(unittest.TestCase):
+    """OpenDART report categorization tests."""
+
+    def test_categorize_reports(self):
+        rows = [
+            {"report_nm": "영업(잠정)실적(공정공시)"},
+            {"report_nm": "유상증자결정"},
+            {"report_nm": "최대주주 변경"},
+            {"report_nm": "기타 공시"},
+        ]
+        categories = connectors._categorize_opendart_reports(rows)
+        self.assertEqual(categories["earnings"], 1)
+        self.assertEqual(categories["financing"], 1)
+        self.assertEqual(categories["ownership"], 1)
+        self.assertEqual(categories["other"], 1)
+
+
 class TestCollectExternalMetrics(unittest.IsolatedAsyncioTestCase):
     """External connector orchestration tests."""
 
@@ -77,6 +94,29 @@ class TestCollectExternalMetrics(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, {"opendart": 12})
 
+    async def test_collect_expands_extra_metrics(self):
+        async def opendart_handler() -> ConnectorResult:
+            return ConnectorResult(
+                "opendart",
+                "ok",
+                4,
+                "ok",
+                extra_metrics={"opendart:earnings": 2, "opendart:other": 2},
+            )
+
+        with (
+            patch.dict(os.environ, {"EXTERNAL_CONNECTORS_ENABLED": "true"}, clear=False),
+            patch.object(connectors, "_CONNECTOR_HANDLERS", {"opendart": opendart_handler}),
+        ):
+            result = await connectors.collect_external_source_metrics(
+                active_source_ids=["opendart"],
+            )
+
+        self.assertEqual(
+            result,
+            {"opendart": 4, "opendart:earnings": 2, "opendart:other": 2},
+        )
+
     async def test_collect_resolves_sources_from_environment(self):
         async def opendart_handler() -> ConnectorResult:
             return ConnectorResult("opendart", "ok", 3, "ok")
@@ -103,6 +143,17 @@ class TestCollectExternalMetrics(unittest.IsolatedAsyncioTestCase):
             result = await connectors.collect_external_source_metrics(active_source_ids=None)
 
         self.assertEqual(result, {"opendart": 3, "sec_edgar": 10})
+
+    def test_render_telemetry_markdown(self):
+        results = [
+            ConnectorResult("opendart", "ok", 5, "ok", latency_ms=120),
+            ConnectorResult("fred", "skip", 0, "missing key", latency_ms=0),
+        ]
+        markdown = connectors.render_external_connector_telemetry_markdown(results)
+        self.assertIn("외부 소스 텔레메트리", markdown)
+        self.assertIn("opendart", markdown)
+        self.assertIn("latency 120ms", markdown)
+        self.assertIn("missing key", markdown)
 
 
 if __name__ == "__main__":
