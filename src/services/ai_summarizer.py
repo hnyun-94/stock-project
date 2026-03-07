@@ -1,8 +1,11 @@
 """
 AI 요약 서비스 모듈.
 
-Google Gemini API를 활용하여 수집된 뉴스, 커뮤니티, 트렌드, 시장 지수 데이터를
-사용자가 읽기 편한 형태의 인사이트 리포트로 요약 및 브리핑합니다.
+Codex reading guide:
+1. `safe_gemini_call()`이 실제 Gemini I/O가 일어나는 유일한 경로입니다.
+2. 현재 운영 경로의 public entry point는 `generate_market_summary()`,
+   `generate_theme_briefings_batch()`, `generate_holding_insights()`입니다.
+3. 나머지 helper는 모델 선택, 프롬프트 제약, JSON 파싱/fallback을 담당합니다.
 """
 
 import os
@@ -19,6 +22,8 @@ from src.utils.logger import global_logger
 from src.utils.circuit_breaker import async_circuit_breaker
 from src.services.prompt_manager import get_cached_prompt
 from src.services.prompt_tuner import get_tuning_adjustments, apply_tuning_to_prompt
+
+# Section A: model discovery and runtime selection helpers
 
 # 제미나이 API 호출 병목/Rate Limit 15RPM 방지를 위한 Semaphore 및 딜레이
 _gemini_sema = asyncio.Semaphore(2)
@@ -204,12 +209,9 @@ async def _generate_content_with_model(
         timeout=90.0,
     )
 
+
 def _get_client():
-    """Gemini 클라이언트 싱글톤 인스턴스를 반환합니다.
-    
-    최초 호출 시 Client 객체를 생성하고, 이후에는 동일 인스턴스를 재사용합니다.
-    GEMINI_API_KEY 환경변수가 설정되어 있어야 합니다.
-    """
+    """Gemini 클라이언트 싱글톤을 반환합니다."""
     global _client
     if _client is None:
         api_key = os.getenv("GEMINI_API_KEY")
@@ -231,12 +233,10 @@ async def safe_gemini_call(
     temperature: float = 0.5,
     response_mime_type: Optional[str] = None
 ) -> str:
-    """Gemini API 호출 시 429 에러 등을 대비한 안전한 래퍼 함수입니다."""
+    """재시도, 모델 fallback, timeout, JSON mode를 포함한 공용 Gemini 호출 래퍼입니다."""
     client = _get_client()
     selected_model = _normalize_model_name(model) or _default_requested_model()
     async with _gemini_sema:
-        # Gemini API 호출이 무한정 멈추는 것을 방지하기 위해 90초 타임아웃을 설정합니다.
-        # 실제 Gemini 응답은 10~30초이므로 90초면 충분한 여유를 제공합니다. [REQ-Q02]
         try:
             config_kwargs: Dict[str, Any] = {
                 "temperature": temperature,
@@ -306,6 +306,9 @@ async def safe_gemini_call(
         await asyncio.sleep(2)  # 분당 요청수 추가 방어
     return response.text or ""
 
+
+# Section B: prompt shaping helpers
+
 def _load_prompt_template(filename: str) -> str:
     """prompts 폴더에서 프롬프트 템플릿 마크다운 파일을 읽어옵니다."""
     prompt_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts", filename)
@@ -354,6 +357,8 @@ def _append_theme_briefing_limit(prompt: str) -> str:
     )
     return f"{prompt.rstrip()}{line_limit_instruction}"
 
+
+# Section C: structured-output parsing helpers
 
 def _build_batch_theme_prompt(theme_items: List[Dict[str, Any]]) -> str:
     """여러 키워드를 한 번에 분석하기 위한 배치 프롬프트를 생성합니다."""
@@ -525,6 +530,9 @@ def _parse_holding_insights_response(
 
     return parsed_items
 
+
+# Section D: public report-generation entry points
+
 async def generate_market_summary(market_indices: List[MarketIndex], market_news: List[NewsArticle], datalab_trends: List[SearchTrend] = None) -> str:
     """오늘의 주요 시황 데이터와 뉴스를 입력받아 시장 종합 요약을 생성합니다.
 
@@ -642,6 +650,7 @@ async def generate_theme_briefings_batch(theme_items: List[Dict[str, Any]]) -> L
     missing_indices: List[int] = []
 
     try:
+        # 1차 경로: 여러 키워드를 JSON mode 한 번으로 처리합니다.
         batch_prompt = _build_batch_theme_prompt(theme_items)
         response_text = await safe_gemini_call(
             batch_prompt,
@@ -664,6 +673,7 @@ async def generate_theme_briefings_batch(theme_items: List[Dict[str, Any]]) -> L
     if not missing_indices:
         return results
 
+    # 2차 경로: 배치 응답이 비거나 일부 누락되면 필요한 키워드만 개별 보강합니다.
     global_logger.warning(
         f"배치 브리핑 응답 누락 {len(missing_indices)}건 감지, 개별 호출 fallback 수행"
     )
@@ -731,7 +741,11 @@ async def generate_holding_insights(
     theme_briefings: List[str],
     holding_news_map: Dict[str, List[NewsArticle]],
 ) -> List[Dict[str, str]]:
-    """보유 종목별 개별 인사이트를 JSON 구조로 생성합니다."""
+    """보유 종목별 인사이트를 구조화 JSON으로 생성합니다.
+
+    최종 리포트는 종합 문단보다 종목별 상태/근거/액션이 중요하므로
+    입력 순서를 유지한 짧은 객체 리스트를 반환합니다.
+    """
     if not holdings:
         return []
 

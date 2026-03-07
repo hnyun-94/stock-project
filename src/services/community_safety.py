@@ -17,6 +17,7 @@ from typing import Dict, Iterable, List
 from src.models import CommunityPost
 
 
+# 기본 허용 소스는 보수적으로 유지해 모델 safety 오류 가능성을 낮춥니다.
 DEFAULT_ENABLED_SOURCES = {"reddit_wallstreetbets"}
 
 _HIGH_RISK_KEYWORDS = {

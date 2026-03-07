@@ -1,10 +1,10 @@
 """
 구조화된 리포트 조립 서비스.
 
-역할:
-1. 시장/테마/보유종목 입력을 짧은 섹션 단위로 정규화합니다.
-2. 이전 리포트 스냅샷과 비교해 상단 헤드라인 변화를 계산합니다.
-3. 시간/일/주/월 타임윈도우와 장기 플랜 payload를 생성합니다.
+Codex reading guide:
+1. 이 모듈의 public entry point는 `build_report_payload()` 하나입니다.
+2. 위 helper는 자유서술 입력을 짧은 bullet과 비교용 snapshot으로 정규화합니다.
+3. payload 순서는 최종 리포트의 표시 순서와 동일하게 "최근 -> 장기"입니다.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from collections import Counter
 from typing import Any, Dict, Iterable, List, Sequence
 
 from src.models import MarketIndex, NewsArticle, SearchTrend
+
+# Section A: text normalization helpers
 
 
 def _clean_markdown_line(text: str) -> str:
@@ -80,6 +82,8 @@ def extract_key_points(markdown_text: str, max_items: int = 3) -> List[str]:
     return deduped[:max_items]
 
 
+# Section B: snapshot comparison helpers
+
 def _deserialize_snapshot_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     snapshots: List[Dict[str, Any]] = []
     for row in rows:
@@ -129,6 +133,7 @@ def _build_change_headlines(
     current_snapshot: Dict[str, Any],
     previous_snapshots: Sequence[Dict[str, Any]],
 ) -> List[str]:
+    """직전 2회 리포트 대비 눈에 띄는 변화만 상단 headline용으로 추립니다."""
     headlines: List[str] = []
     prev = previous_snapshots[0] if previous_snapshots else {}
     prev_two_focus = set()
@@ -180,6 +185,8 @@ def _build_change_headlines(
 
     return headlines[:3]
 
+
+# Section C: public payload builder
 
 def build_report_payload(
     *,
@@ -274,6 +281,7 @@ def build_report_payload(
     monthly_points.append(_format_connector_health(connector_success_rate_30d))
 
     market_regime = _build_market_regime(sentiment_score, sentiment_label, market_points)
+    # snapshot은 비교에 필요한 최소 필드만 저장해 DB 부피를 억제합니다.
     current_snapshot = {
         "user_name": user_name,
         "market_regime": market_regime,
@@ -298,6 +306,7 @@ def build_report_payload(
     )
     long_term_plan.append(_format_connector_health(connector_success_rate_30d))
 
+    # payload 순서는 화면 상단에서 하단으로 읽히는 실제 리포트 구조와 동일합니다.
     payload = {
         "title": "🌤️ 오늘의 주식 인사이트 리포트",
         "subtitle": "최근 흐름 중심으로 재구성한 5~10분 요약 리포트",

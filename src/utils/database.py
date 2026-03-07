@@ -1,25 +1,15 @@
 """
-SQLite 데이터베이스 추상화 모듈.
+SQLite 영속화 계층.
 
-기존 JSON 파일 기반 영구 저장소를 SQLite로 교체합니다.
-JSON 파일의 문제점:
-1. 동시 쓰기 시 데이터 손실 위험 (파일 잠금 없음)
-2. 전체 파일을 읽어야 하므로 데이터가 커지면 느려짐 (O(n) 탐색)
-3. 날짜 범위 검색 등 쿼리가 불가능
+현재 역할:
+1. feedback, prediction snapshot, report snapshot, connector telemetry를 저장합니다.
+2. `STOCK_DB_PATH`를 반영해 로컬/테스트/GitHub Actions 경로를 일관되게 맞춥니다.
+3. 손상 복구와 close 시 WAL checkpoint로 런타임 상태를 안정적으로 유지합니다.
 
-SQLite의 장점:
-1. ACID 트랜잭션으로 데이터 무결성 보장
-2. 인덱스 기반 빠른 검색
-3. Python 표준 라이브러리 (추가 설치 없음)
-
-사용법:
-    from src.utils.database import get_db
-
-    db = get_db()
-    db.insert_feedback("홍길동", 5, "좋아요")
-    feedbacks = db.get_recent_feedbacks(days=7)
-
-[Task 6.20, REQ-P06]
+Codex reading guide:
+1. `get_db()`는 경로 기반 싱글톤입니다.
+2. `report_snapshots` 계열 메서드가 헤드라인 변화/타임윈도우 계산의 입력입니다.
+3. `get_runtime_state_counts()`는 workflow health check에서 사용됩니다.
 """
 
 import os
@@ -28,6 +18,8 @@ import threading
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from src.utils.logger import global_logger
+
+# Section A: path resolution and singleton lifecycle
 
 # 데이터베이스 파일 경로
 DB_PATH = os.path.join("data", "stock_project.db")
@@ -183,9 +175,7 @@ class Database:
         """)
         self._conn.commit()
 
-    # ==========================================
-    # 피드백 관련 메서드
-    # ==========================================
+    # Section B: feedback methods
 
     def insert_feedback(self, user_name: str, score: int, comment: str = "") -> None:
         """사용자 피드백을 저장합니다.
@@ -235,9 +225,7 @@ class Database:
         result = cursor.fetchone()[0]
         return round(result, 2) if result else 0.0
 
-    # ==========================================
-    # 예측 스냅샷 관련 메서드
-    # ==========================================
+    # Section C: prediction snapshot methods
 
     def insert_snapshot(self, user_name: str, holdings: str, analysis_text: str) -> None:
         """AI 예측 분석 스냅샷을 저장합니다.
@@ -329,9 +317,7 @@ class Database:
         )
         return [dict(row) for row in cursor.fetchall()]
 
-    # ==========================================
-    # 외부 커넥터 텔레메트리 메서드
-    # ==========================================
+    # Section D: external connector telemetry methods
 
     def insert_connector_run(
         self,
@@ -407,9 +393,7 @@ class Database:
                 rates[row["source_id"]] = round(success / total, 4)
         return rates
 
-    # ==========================================
-    # 리포트 스냅샷 메서드
-    # ==========================================
+    # Section E: report snapshot methods
 
     def insert_report_snapshot(
         self,
@@ -487,7 +471,7 @@ class Database:
 def get_db(db_path: Optional[str] = None) -> Database:
     """Database 싱글톤 인스턴스를 반환합니다.
 
-    스레드 안전하게 한 번만 생성됩니다.
+    스레드 안전하게 한 번만 생성되며, 경로가 바뀌면 새 인스턴스로 교체됩니다.
 
     Args:
         db_path: 데이터베이스 파일 경로

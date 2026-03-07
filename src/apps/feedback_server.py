@@ -1,8 +1,8 @@
 """
-피드백/별점 수집 서버 (사용자 피드백 루프) 모듈
+피드백/별점 수집 서버 모듈.
 
-FastAPI를 띄워 고객이 이메일/텔레그램 하단 링크를 눌렀을 때 
-해당 파라미터(이름, 점수, 코멘트)를 수신하고 피드백 DB(user_feedback.json)에 기록합니다.
+단일 FastAPI 라우트에서 HMAC 서명을 검증하고, 검증된 피드백만
+SQLite 기반 feedback 저장 흐름으로 넘깁니다.
 """
 
 import os
@@ -87,6 +87,7 @@ async def submit_feedback(user: str, score: int, signature: str = "", comment: s
         return HTMLResponse(content="<h1>서버 오류가 발생했습니다.</h1>", status_code=500)
 
 def run_feedback_server(port: int = 8000):
+    """운영/로컬 확인용 FastAPI 서버를 실행합니다."""
     global_logger.info("🟢 피드백 루프 수집용 웹 서버(FastAPI)가 시작됩니다.")
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=port)
