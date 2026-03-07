@@ -59,6 +59,15 @@ def _append_card(
     if card.get("action"):
         lines.append(f"- 실행 아이디어: {card['action']}")
 
+    headers = card.get("table_headers") or []
+    rows = card.get("table_rows") or []
+    if headers and rows:
+        lines.append("")
+        lines.append("| " + " | ".join(str(header) for header in headers) + " |")
+        lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+        for row in rows:
+            lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
+
     lines.append("")
 
 
@@ -101,6 +110,15 @@ def build_structured_markdown_report(report_payload: dict) -> str:
                 heading=f"{window.get('label', '')} | {window.get('title', '')}",
                 card=window,
             )
+
+    data_quality_section = report_payload.get("data_quality_section")
+    if data_quality_section:
+        lines.extend(["## 🛰 데이터 신뢰도", ""])
+        _append_card(
+            lines,
+            heading="최근 7일 외부 데이터 품질",
+            card=data_quality_section,
+        )
 
     theme_sections = report_payload.get("theme_sections", [])
     if theme_sections:
