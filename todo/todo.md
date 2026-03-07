@@ -137,4 +137,4 @@
 
 _작성일: 2026-03-02 | 상세 요구사항: `requirements/04_phase6_optimization_requirements.md` 참조_
 _진행 Task 명세: `done/phase6_task.md` 참조_
-_갱신일: 2026-03-08 | 계획 백로그 완료 + 팔레트/헤더/문장 완결성/기사 링크 보강 반영, 147 Tests PASS_
+_갱신일: 2026-03-08 | 계획 백로그 완료 + 팔레트/헤더/문장 완결성/기사 링크/경제 흐름/학습 카드/강조 보강 반영, 147 Tests PASS_
