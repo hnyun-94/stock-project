@@ -117,6 +117,16 @@
   - `git switch -c`, `git add`, `git commit`, `git push -u origin`
   - `gh pr create --body-file`, `gh pr view`, `gh pr merge --squash --delete-branch`
   - 위 명령은 품질 게이트 통과 후 사용하고, hang 방지 규칙을 지킵니다.
+- **Delegated uv Commands / 상시 위임 범위**
+  - 사용자가 명시적으로 위임한 범위로 간주하고, 별도 재확인 없이 진행합니다.
+  - `uv sync`
+  - `uv lock`, `uv export`
+  - `uv run ...`
+  - `uv tool ...`
+  - 전제 조건:
+    - 실행 목적과 영향 범위를 작업 맥락 안에서 설명할 수 있어야 함
+    - 실행 결과와 실패 여부를 최종 응답에 명시해야 함
+    - `uv` 바깥의 별도 고위험 명령을 함께 묶지 않아야 함
 - **Delegated GitHub Collaboration / 상시 위임 범위**
   - 아래 명령은 일반적인 GitHub 협업 흐름으로 간주하고, 별도 사용자 재확인 없이 진행합니다.
   - `git push origin <branch>`, `git push -u origin <branch>`
@@ -128,8 +138,7 @@
     - force push, destructive option, 관리자급 설정 변경이 아니어야 함
 - **Always Review / 항상 재확인**
   - `.env`, secret, credential, mail account, webhook secret 관련 명령
-  - `uv run python -m src.main` 같은 실제 외부 호출/발송 실행
-  - `uv run python -m src.apps.feedback_server`, `docker-compose up` 같은 서버/컨테이너 실행
+  - `docker-compose up` 같은 서버/컨테이너 실행
   - `scripts/update_notion_*`, `scripts/provision_prompt_db.py`, schema/data mutation
   - `rm`, `git reset --hard`, `git checkout --`, 대량 삭제/복구
   - `git push --force`, remote branch 삭제, `gh api`, `gh auth`, `gh secret`, `gh variable`
@@ -139,6 +148,7 @@
 
 - 승인 피로는 **안전한 명령군을 번들링**하여 줄이고, 고위험 명령의 승인 경계는 유지합니다.
 - `.codex/config.toml`은 `workspace-write + network=allow + ask-for-approval=on-request`를 기본으로 유지합니다.
+- 사용자가 명시적으로 위임한 `uv` prefix는 반복 작업 비용 절감을 위해 상시 위임 범위로 취급합니다.
 - 더 넓은 권한이 필요할 때는 broad allow보다 **좁은 prefix approval** 또는 wrapper script를 우선 고려합니다.
 
 ### Git Flow & PR Creation (⚠️ CRITICAL - Hang 방지)
