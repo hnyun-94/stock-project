@@ -102,3 +102,11 @@
 ### 종합 판단
 - 이번 라운드는 제품 기능 확장보다 운영 방어와 품질 프로세스 강화가 우선입니다.
 - 따라서 `TelegramSender` 하드닝, SEC placeholder 차단, changed-file lint, 회귀 테스트 보강을 묶어서 즉시 반영합니다.
+
+### PR 리뷰 후 추가 논의
+- 추가 발견:
+  - GitHub Actions PR 게이트가 synthetic merge commit을 checkout 하면서 커밋 크기 정책을 합산 오판할 수 있었습니다.
+- 근거:
+  - PR #45의 첫 quality-gate 실패 로그에서 merge ref 단일 커밋 541줄로 계산됐지만, 실제 PR 브랜치 커밋은 293줄 + 248줄이었습니다.
+- 후속 판단:
+  - `pr_quality_gate.yml`은 실제 PR head SHA를 checkout 하도록 수정합니다.
