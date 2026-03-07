@@ -20,23 +20,16 @@ description: "Initialize a Codex session by loading project-management docs, che
    `AGENTS.md`, `todo/todo.md`, `done/phase6_task.md`, `task/task.md`
 2. E2E 운영 기준 문서 로딩(필요 시):
    `done/e2e_incident_response_plan.md`, `done/e2e_incident_execution_report.md`
-3. 진행 상태 확인:
-   `cat todo/todo.md`, 최신 `logging/YYYY-MM-DD.md`
-4. 형상 관리 상태 확인:
-   `git status`, `git branch`
+3. 기본 점검은 `scripts/session_bootstrap.sh`로 실행합니다.
+4. 빠른 문맥만 필요하면 `scripts/session_bootstrap.sh --no-tests`를 사용합니다.
 5. Codex 설정/훅 점검:
    `.codex/config.toml` 존재 여부, `git config --get core.hooksPath`, `.githooks/pre-push` 실행 가능 여부
-6. 기준선 테스트 실행:
-   `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q`
 7. `AGENTS.md`의 Mandatory Delivery Workflow 섹션 존재 및 최신성 확인
 8. 결과를 요약하고, 필요한 문서/설정 동기화를 반영합니다.
 
 ## Essential Commands
 
 ```bash
-cat todo/todo.md
-ls -t logging/ | head -1 | xargs -I{} cat logging/{}
-git status && git branch
-git config --get core.hooksPath
-uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
+scripts/session_bootstrap.sh
+scripts/session_bootstrap.sh --no-tests
 ```
