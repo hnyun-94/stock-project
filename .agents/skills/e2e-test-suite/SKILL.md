@@ -22,7 +22,7 @@ description: "Run the project quality gate tests (services + e2e dryrun) before 
 2. 실패 시 커밋/푸시를 중단하고 문제를 수정합니다.
 3. 장애 원인/해결 절차는 `done/e2e_incident_response_plan.md`를 기준으로 따릅니다.
 4. 실행 결과와 누락점은 `done/e2e_incident_execution_report.md`에 반영합니다.
-5. 필요 시 `errorCase/`, `todo/todo.md`, `logging/YYYY-MM-DD.md`를 업데이트합니다.
+5. 필요 시 로컬 `errorCase/`, `logging/YYYY-MM-DD.md`를 업데이트하고, Git 공유가 필요한 내용은 `todo/todo.md`, `task/`, `done/`에 정제합니다.
 6. DB/workflow/runtime-sensitive 변경(`database.py`, `user_manager.py`, `report_scheduler.yml`, `scripts/check_runtime_state.py`)은 위 스크립트 안의 `check_context_sync` 결과를 반드시 확인합니다.
 7. PR 전에는 range가 맞는지 확인하고, 필요 시 `--range`를 명시적으로 다시 지정합니다.
 8. 테스트 실패 상태에서는 커밋/푸시/PR/머지를 진행하지 않습니다.

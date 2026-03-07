@@ -221,7 +221,7 @@ Git hook:
 
 - `AGENTS.md`: Codex 작업 규칙과 프로젝트 운영 규칙
 - `todo/todo.md`: 현재 우선순위와 백로그
-- `logging/YYYY-MM-DD.md`: 실행 로그와 세션별 작업 이력
+- `logging/YYYY-MM-DD.md`: 로컬 실행 로그와 세션별 작업 이력. 공유가 필요한 내용은 `task/`, `done/` 문서로 승격
 - `done/completed_work_report.md`: 최근 완료 기준선
 - `task/report_redesign_multi_role_plan.md`: 리포트 재설계 검토/실행 문서
 - `task/github_actions_runtime_review_and_execution_plan.md`: GitHub Actions + SQLite 런타임 검토 문서

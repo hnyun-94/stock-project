@@ -14,8 +14,8 @@
 
 AI Agent가 주요 동작을 완료했거나 에러가 발생했을 때는 반드시 정해진 폴더에 기록을 남깁니다.
 
-    - **성공 로깅**: 작업이 성공적으로 완료되었을 때는 반드시 **`.agent/workflows/log_success.md`** 워크플로우를 실행하여 `logging/YYYY-MM-DD.md` 파일에 기록을 남깁니다. (이 워크플로우는 수정 전/후의 내용 요약을 포함합니다.)
-    - **에러 로깅**: 작업 중 Error가 발생했을 때는 바로 종료하지 않고, **`.agent/workflows/log_error.md`** 워크플로우를 실행하여 `errorcase/YYYY-MM-DD_에러명.md` 파일에 에러 상황(원인)과 조치 방법(해결 내용)을 정리하여 기록해 둡니다.
+    - **성공 로깅**: 작업이 성공적으로 완료되었을 때는 `.agent/workflows/log_success.md` 워크플로우를 실행하여 로컬 `logging/YYYY-MM-DD.md`에 기록을 남기고, 공유가 필요한 내용은 `task/` 또는 `done/`으로 정제합니다.
+    - **에러 로깅**: 작업 중 Error가 발생했을 때는 `.agent/workflows/log_error.md` 워크플로우로 로컬 `errorcase/YYYY-MM-DD_에러명.md`에 원문을 남기고, Git에는 민감내용을 제거한 교훈만 문서화합니다.
 
 ## 3. 검증(Verification) 및 작업 진행 프로세스
 

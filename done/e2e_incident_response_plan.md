@@ -52,7 +52,7 @@
 3. 실패 시:
    - 실패 로그 수집
    - 원인 분류(환경/테스트/로직/데이터)
-   - `logging/YYYY-MM-DD.md`와 `errorcase/YYYY-MM-DD_*.md` 기록
+   - 로컬 `logging/YYYY-MM-DD.md`와 `errorcase/YYYY-MM-DD_*.md` 기록 후, 공유가 필요한 내용은 정제 문서에 반영
 4. 훅 검증: `.githooks/pre-push`
 5. 계획 대비 누락/변경점 점검 후 실행 여부 결정
 

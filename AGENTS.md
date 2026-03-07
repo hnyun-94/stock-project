@@ -33,7 +33,8 @@
 
 - Git hook은 `.githooks/`를 사용하며 `pre-push`에서 표준 품질 게이트(`tests/services/`, `tests/test_e2e_dryrun.py`)를 검증합니다.
 - `pre-push`에서 **커밋당 변경량(추가+삭제) 400줄 초과 여부**를 함께 검증합니다.
-- `pre-push`에서 `scripts/check_context_sync.sh`를 통해 문맥 동기화 경고(`logging/`, `task/`, `todo/`)와 런타임 상태 smoke check를 함께 수행합니다.
+- `pre-push`에서 `scripts/check_context_sync.sh`를 통해 문맥 동기화 경고(`task/`, `todo/`, `done/`, `README.md`, `AGENTS.md`)와 런타임 상태 smoke check를 함께 수행합니다.
+- `pre-push`에서 `scripts/check_git_hygiene.sh`로 금지 경로, 절대 경로, 실제 이메일 노출 여부를 검사합니다.
 - `pre-push` 품질 게이트/커밋 크기 검증은 우회하지 않습니다. (skip 환경변수 사용 금지)
 - `core.hooksPath`는 반드시 `.githooks`로 설정합니다: `git config core.hooksPath .githooks`
 - 코드 수정 후 커밋을 생성하기 전, 반드시 테스트 코드를 먼저 갱신하는 것을 원칙으로 합니다.
@@ -67,9 +68,18 @@
 
 - 사용자가 큰 작업을 요청하거나 요구사항이 엮여 있으면, 기본적으로 **PM / TPM / 기획자 / 개발자 / 신입개발자 / 운영자** 관점 리뷰를 먼저 수행합니다.
 - 리뷰 결과는 `task/*.md` 계획서로 구조화하고, 구현 전 병렬 스트림/우선순위/수용 기준을 명시합니다.
-- 작업 도중 중단될 수 있는 변경은 `logging/YYYY-MM-DD.md`에 중간 결과와 검증 상태를 남겨 재개 가능 상태를 유지합니다.
+- 작업 도중 중단될 수 있는 변경은 로컬 `logging/YYYY-MM-DD.md`에 중간 결과를 남기되, Git으로 공유가 필요한 내용은 `task/`, `done/`, `README.md`, `AGENTS.md` 같은 정제 문서로 승격합니다.
 - GitHub Actions, SQLite, 캐시, workflow, env 기반 상태 저장이 엮인 변경은 항상 **런타임 아키텍처 검토 + health-check**까지 포함합니다.
 - 같은 요구가 반복되면 ad-hoc 대응으로 끝내지 말고 `AGENTS.md`, `.agents/skills/`, `.githooks/`, `scripts/`로 승격하여 재사용 가능하게 만듭니다.
+
+### Git Hygiene Policy
+
+- Git에는 코드, 테스트, CI 설정, 템플릿, 정제된 계획/완료 문서만 남깁니다.
+- 아래 경로는 **로컬 전용**으로 취급하며 force-add 하지 않습니다.
+  - `.env`, `data/`, `.local/`, `logging/`, `errorCase/`, `errorcase/`, `.tmp/`
+  - `*.db`, `*.db-wal`, `*.db-shm`, `*.log`, 운영 산출 JSON
+- 로컬 로그/에러 원문에는 사용자 정보, 운영 타임라인, 민감 커뮤니티 원문이 섞일 수 있으므로 Git 밖에 둡니다.
+- 공유가 필요한 운영 교훈은 원문 로그 대신 `task/` 또는 `done/`에 정제해서 남깁니다.
 
 ### Command Permission Policy
 
@@ -130,7 +140,7 @@
 6. PR 생성 (`gh pr create --body-file`) + 6개 역할 리뷰 섹션 작성
 7. 리뷰 이슈 분류/처리 (`critical`은 동일 PR 즉시 수정 후 재검증)
 8. 머지 (`gh pr merge --squash --delete-branch`)
-9. 후속 문서 갱신 (`todo/todo.md`, `logging/YYYY-MM-DD.md` 필요 시)
+9. 후속 문서 갱신 (`todo/todo.md`, `task/*.md`, `done/*.md` 필요 시, 로컬 `logging/YYYY-MM-DD.md`는 선택)
 
 추가 규칙:
 - Codex는 기본적으로 위 1~9 단계를 순차 수행합니다.
@@ -164,6 +174,9 @@ uv run python scripts/check_runtime_state.py --db-path .tmp/runtime/stock_projec
 
 # 문맥 동기화/런타임 smoke check
 scripts/check_context_sync.sh --range origin/master..HEAD
+
+# Git 추적 대상 위생 점검
+sh scripts/check_git_hygiene.sh
 
 # Git hook 경로 확인
 git config --get core.hooksPath
@@ -218,5 +231,5 @@ scripts/session_bootstrap.sh --no-tests
 - `done/github_actions_gemini_404_improvement_plan.md`: GitHub Actions Gemini 404 개선 계획.
 - `done/github_actions_gemini_404_execution_report.md`: 개선 실행 결과 및 검증 기록.
 - `task/github_actions_runtime_review_and_execution_plan.md`: GitHub Actions/SQLite/runtime 상태 유지 검토 및 실행 계획.
-- `logging/YYYY-MM-DD.md`: 최근 작업 이력.
+- `logging/YYYY-MM-DD.md`: 로컬 전용 작업 이력. Git 공유가 필요한 내용은 `task/` 또는 `done/`으로 승격.
 - `.agents/skills/`: 에이전트 자동화 스킬(PR 생성, 테스트 자동화 등) 모음.
