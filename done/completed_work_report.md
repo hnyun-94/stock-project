@@ -20,7 +20,7 @@
 - 상세 체크리스트: `done/phase6_task.md`
 - 통합 요약: `todo/todo.md`
 
-### 최근 구현/정비 완료 항목 (PR #20 ~ #50)
+### 최근 구현/정비 완료 항목 (PR #20 ~ #50 + 2026-03-07 기준선 정비)
 
 1. PR #20
 - Git 거버넌스 강제 워크플로우 적용
@@ -83,6 +83,11 @@
 18. PR #50
 - `AGENTS.md`를 상위 라우팅 문서로 축약
 - 상세 지침을 skills/hook로 이관하고 `completion-context-triage` skill 추가
+
+19. 2026-03-07 리포트 구독자 친화 레이아웃 개선
+- 첨부 뉴스레터 레퍼런스를 참고해 상단 대시보드형 구성, 3축 브리핑, 시간대 압축판으로 재배치
+- `decision_tiles`, `market_scoreboard`, `insight_lenses` 기반 payload 확장
+- 이메일 HTML 표/blockquote 스타일 강화 및 compact brief 렌더링 구조 도입
 
 ---
 

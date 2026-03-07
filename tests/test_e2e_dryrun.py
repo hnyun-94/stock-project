@@ -171,6 +171,14 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                     "score": 88,
                     "reason": "최근 7일 평균 성공률 97%, 최신 데이터 0일 전, 주의 source 0개",
                 },
+                "decision_tiles": [
+                    {"label": "시장 톤", "value": "중립", "detail": "급한 방향 추격보다 확인이 먼저입니다."},
+                    {"label": "먼저 볼 테마", "value": "AI", "detail": "반복 등장 테마입니다."},
+                ],
+                "market_scoreboard": {
+                    "headers": ["항목", "현재 값", "읽는 법"],
+                    "rows": [["KOSPI", "2650.10", "외국인 수급 확인"], ["시장 심리", "+8 / 중립", "과열 여부 확인"]],
+                },
                 "quick_take": {
                     "summary": "핵심 요약",
                     "details": ["근거 1"],
@@ -181,6 +189,18 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                     "negative_view": "부정",
                     "outlook": "전망",
                 },
+                "insight_lenses": [
+                    {
+                        "title": "매크로",
+                        "summary": "요약 1",
+                        "details": ["근거 1"],
+                        "why_it_matters": "왜 중요한가",
+                        "watch_points": ["수급"],
+                        "positive_view": "긍정",
+                        "neutral_view": "중립",
+                        "negative_view": "부정",
+                    }
+                ],
                 "time_windows": [
                     {
                         "label": "1D",
@@ -262,16 +282,17 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
             }
         )
 
-        self.assertIn("## 🧭 헤드라인 변화", markdown_text)
+        self.assertIn("## 📍 지금 결론", markdown_text)
+        self.assertIn("### 빠르게 보는 판단표", markdown_text)
+        self.assertIn("### 오늘 바로 볼 숫자", markdown_text)
+        self.assertIn("## 🧱 오늘 판단을 만드는 세 가지 축", markdown_text)
+        self.assertIn("## 🕒 시간대 압축판", markdown_text)
         self.assertIn("리포트 신뢰도: 높음", markdown_text)
-        self.assertIn("## 📌 오늘 한눈에 보기", markdown_text)
-        self.assertIn("**핵심 근거**", markdown_text)
-        self.assertIn("**왜 중요한가**", markdown_text)
-        self.assertIn("**지금 볼 것**", markdown_text)
-        self.assertIn("**세 가지 시각**", markdown_text)
-        self.assertIn("**다음 체크포인트**", markdown_text)
+        self.assertIn("| 구분 | 내용 | 왜 보나 |", markdown_text)
+        self.assertIn("| 항목 | 현재 값 | 읽는 법 |", markdown_text)
+        self.assertIn("| 구간 | 한줄 판단 | 지금 볼 것 |", markdown_text)
         self.assertIn("## 🛰 데이터 신뢰도", markdown_text)
-        self.assertIn("## 🧪 외부 지표 해석", markdown_text)
+        self.assertIn("## 🧪 보조 지표 해석", markdown_text)
         self.assertIn("## 💼 보유 종목별 인사이트", markdown_text)
         self.assertIn("## 🧩 용어 풀이", markdown_text)
         self.assertIn("### 삼성전자", markdown_text)

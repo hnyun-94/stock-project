@@ -18,6 +18,7 @@
   - 리포트 신뢰도 배지 + 외부 지표 해석 + 운영 Runbook + PR Quality Gate
   - notifier/품질 게이트 하드닝 + changed-file lint
   - 리포트 Markdown 가독성 재설계
+  - 리포트 구독자 친화 레이아웃 재배치(상단 대시보드, 3축 브리핑, 시간대 압축판)
   - `gh`/`uv` 위임 정책 정리 + 9개 역할 리뷰 체계 확장
   - Completion Context Triage 정책 + `AGENTS.md` 상위 라우팅 구조 최적화
 
