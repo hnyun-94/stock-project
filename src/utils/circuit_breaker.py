@@ -3,7 +3,13 @@ import asyncio
 from functools import wraps
 from src.utils.logger import global_logger
 
-def async_circuit_breaker(failure_threshold: int = 3, recovery_timeout: int = 60, fallback_value=None):
+
+def async_circuit_breaker(
+    failure_threshold: int = 3,
+    recovery_timeout: int = 60,
+    fallback_value=None,
+    non_trip_exceptions=(),
+):
     """
     역할 (Role):
         비동기 네트워크 I/O나 API 호출에서 간헐적 장애가 아닌 "장기적/영구적 장애"를 감지했을 경우,
@@ -13,6 +19,7 @@ def async_circuit_breaker(failure_threshold: int = 3, recovery_timeout: int = 60
         failure_threshold (int): 실패가 연속으로 이 횟수만큼 발생하면 서킷을 엽니다(Open).
         recovery_timeout (int): 서킷 개방 후 다시 시도해볼 때(Half-Open)까지 대기하는 초(seconds).
         fallback_value (Any): 서킷이 열렸을 때 에러를 뿜지 않고 시스템 보호를 위해 대신 반환할 기본값이나 함수 콜백입니다.
+        non_trip_exceptions (tuple[type[BaseException], ...]): 서킷 실패 카운트에서 제외할 예외 타입 묶음입니다.
     """
     def decorator(func):
         state = {
@@ -41,6 +48,12 @@ def async_circuit_breaker(failure_threshold: int = 3, recovery_timeout: int = 60
                 return result
                 
             except Exception as e:
+                if non_trip_exceptions and isinstance(e, non_trip_exceptions):
+                    global_logger.warning(
+                        f"[CircuitBreaker] '{func.__name__}' Non-trip exception detected: {e}"
+                    )
+                    raise e
+
                 state['fail_count'] += 1
                 state['last_failure_time'] = time.time()
                 global_logger.error(f"[CircuitBreaker] '{func.__name__}' Failed (누적 {state['fail_count']}/{failure_threshold}): {e}")
