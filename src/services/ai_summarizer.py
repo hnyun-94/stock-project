@@ -342,6 +342,19 @@ def _append_market_summary_line_limit(prompt: str) -> str:
     return f"{prompt.rstrip()}{line_limit_instruction}"
 
 
+def _append_theme_briefing_limit(prompt: str) -> str:
+    """테마 브리핑 프롬프트에 짧은 bullet 제약을 강제합니다."""
+    line_limit_instruction = (
+        "\n\n[출력 제약]\n"
+        "반드시 제목 1줄 + bullet 최대 3개로 작성하세요.\n"
+        "- bullet은 각각 한 문장만 사용하세요.\n"
+        "- 뉴스 핵심, 수급/심리, 투자 시사점 순으로 짧게 정리하세요.\n"
+        "- 비속어/민감 표현을 직접 인용하지 말고 '고위험 커뮤니티 표현은 제외됨'처럼 중립적으로 요약하세요.\n"
+        "- 장문 문단, 서론, 결론, 면책 문구를 추가하지 마세요.\n"
+    )
+    return f"{prompt.rstrip()}{line_limit_instruction}"
+
+
 def _build_batch_theme_prompt(theme_items: List[Dict[str, Any]]) -> str:
     """여러 키워드를 한 번에 분석하기 위한 배치 프롬프트를 생성합니다."""
     prompt_sections = [
@@ -353,6 +366,8 @@ def _build_batch_theme_prompt(theme_items: List[Dict[str, Any]]) -> str:
         "출력 스키마:",
         '{"results":[{"keyword":"키워드","briefing_md":"마크다운 브리핑"}]}',
         "각 briefing_md에는 제목(### 🎯 관심 테마 브리핑: <키워드>)을 포함하세요.",
+        "각 briefing_md는 제목 1줄 + bullet 최대 3개만 허용합니다.",
+        "bullet은 각각 한 문장만 사용하고, 장문 문단과 민감 표현 직접 인용은 금지합니다.",
     ]
 
     for index, item in enumerate(theme_items, 1):
@@ -401,6 +416,114 @@ def _parse_batch_theme_response(response_text: str, expected_count: int) -> List
             briefings[idx] = md_text.strip()
 
     return briefings
+
+
+def _build_holding_news_context(
+    holdings: List[str],
+    holding_news_map: Dict[str, List[NewsArticle]],
+) -> str:
+    """보유 종목별 뉴스 컨텍스트 문자열을 생성합니다."""
+    sections: List[str] = []
+    for holding in holdings:
+        sections.append(f"[보유 종목: {holding}]")
+        news_list = holding_news_map.get(holding, [])
+        if not news_list:
+            sections.append("- 관련 뉴스 부족")
+            continue
+        for index, news in enumerate(news_list[:3], 1):
+            sections.append(f"{index}. {news.title}")
+            if news.summary:
+                sections.append(f"   → {news.summary[:120]}")
+    return "\n".join(sections)
+
+
+def _fallback_holding_insights(
+    holdings: List[str],
+    holding_news_map: Dict[str, List[NewsArticle]],
+) -> List[Dict[str, str]]:
+    """JSON 파싱 실패 시 종목별 보수적 기본 인사이트를 생성합니다."""
+    positive_keywords = ("상승", "반등", "실적", "수주", "강세", "기대", "확대")
+    negative_keywords = ("하락", "급락", "우려", "소송", "악재", "부진", "감소")
+    insights: List[Dict[str, str]] = []
+
+    for holding in holdings:
+        news_titles = [news.title for news in holding_news_map.get(holding, [])[:2]]
+        score = 0
+        for title in news_titles:
+            score += sum(1 for keyword in positive_keywords if keyword in title)
+            score -= sum(1 for keyword in negative_keywords if keyword in title)
+
+        stance = "관찰"
+        if score >= 2:
+            stance = "유지"
+        elif score <= -1:
+            stance = "경계"
+
+        summary = news_titles[0] if news_titles else "직접 연계 뉴스가 적어 추가 확인이 필요합니다."
+        action = "실적/수급 일정 확인"
+        if stance == "유지":
+            action = "강한 모멘텀 유지 여부 점검"
+        elif stance == "경계":
+            action = "단기 변동성 확대 여부 점검"
+
+        insights.append(
+            {
+                "holding": holding,
+                "stance": stance,
+                "summary": summary,
+                "action": action,
+            }
+        )
+    return insights
+
+
+def _parse_holding_insights_response(
+    response_text: str,
+    holdings: List[str],
+    holding_news_map: Dict[str, List[NewsArticle]],
+) -> List[Dict[str, str]]:
+    """Gemini JSON 응답에서 보유 종목별 인사이트를 추출합니다."""
+    try:
+        payload = json.loads(response_text)
+    except json.JSONDecodeError:
+        return _fallback_holding_insights(holdings, holding_news_map)
+
+    raw_items = []
+    if isinstance(payload, dict):
+        raw_items = payload.get("insights", [])
+    elif isinstance(payload, list):
+        raw_items = payload
+
+    parsed_items: List[Dict[str, str]] = []
+    seen_holdings: Set[str] = set()
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        holding = str(item.get("holding") or item.get("symbol") or "").strip()
+        if not holding or holding in seen_holdings or holding not in holdings:
+            continue
+        parsed_items.append(
+            {
+                "holding": holding,
+                "stance": str(item.get("stance") or "관찰").strip(),
+                "summary": str(item.get("summary") or "").strip(),
+                "action": str(item.get("action") or "추가 확인").strip(),
+            }
+        )
+        seen_holdings.add(holding)
+
+    if len(parsed_items) != len(holdings):
+        fallback_map = {
+            item["holding"]: item
+            for item in _fallback_holding_insights(holdings, holding_news_map)
+        }
+        merged_items = []
+        parsed_map = {item["holding"]: item for item in parsed_items}
+        for holding in holdings:
+            merged_items.append(parsed_map.get(holding) or fallback_map[holding])
+        return merged_items
+
+    return parsed_items
 
 async def generate_market_summary(market_indices: List[MarketIndex], market_news: List[NewsArticle], datalab_trends: List[SearchTrend] = None) -> str:
     """오늘의 주요 시황 데이터와 뉴스를 입력받아 시장 종합 요약을 생성합니다.
@@ -492,6 +615,7 @@ async def generate_theme_briefing(keyword: str, keyword_news: List[NewsArticle],
             model = _default_requested_model()
             temperature = 0.5
 
+        prompt = _append_theme_briefing_limit(prompt)
         response_text = await safe_gemini_call(prompt, model=model, temperature=temperature)
         return response_text
         
@@ -599,3 +723,61 @@ async def generate_personalized_portfolio_analysis(holdings: List[str], market_s
     except Exception as e:
         global_logger.error(f"초개인화 포트폴리오 분석 생성 중 오류 발생: {e}")
         return f"포트폴리오 맞춤 분석 생성 실패: {str(e)}"
+
+
+async def generate_holding_insights(
+    holdings: List[str],
+    market_summary: str,
+    theme_briefings: List[str],
+    holding_news_map: Dict[str, List[NewsArticle]],
+) -> List[Dict[str, str]]:
+    """보유 종목별 개별 인사이트를 JSON 구조로 생성합니다."""
+    if not holdings:
+        return []
+
+    compact_theme_briefings = "\n".join(theme_briefings[:3])
+    news_context = _build_holding_news_context(holdings, holding_news_map)
+    prompt = f"""
+당신은 리스크 관리에 강한 프라이빗 뱅커입니다.
+아래 시장 요약, 테마 요약, 보유 종목별 뉴스를 읽고 종목별 인사이트를 작성하세요.
+
+반드시 JSON만 출력하세요.
+출력 스키마:
+{{
+  "insights": [
+    {{
+      "holding": "종목명",
+      "stance": "유지|확대검토|관찰|경계",
+      "summary": "90자 이내 근거 요약",
+      "action": "한 줄 대응 전략"
+    }}
+  ]
+}}
+
+규칙:
+- holdings 순서를 유지하세요.
+- 각 종목당 객체는 정확히 1개만 생성하세요.
+- 장문 문단, 과장된 확신, 면책 문구는 금지합니다.
+- summary와 action은 각각 한 문장으로 짧게 작성하세요.
+
+[오늘 시장 요약]
+{market_summary}
+
+[주요 테마 요약]
+{compact_theme_briefings}
+
+[보유 종목별 뉴스]
+{news_context}
+""".strip()
+
+    try:
+        response_text = await safe_gemini_call(
+            prompt,
+            model=_default_requested_model(),
+            temperature=0.3,
+            response_mime_type="application/json",
+        )
+        return _parse_holding_insights_response(response_text, holdings, holding_news_map)
+    except Exception as e:
+        global_logger.error(f"보유 종목별 인사이트 생성 중 오류 발생: {e}")
+        return _fallback_holding_insights(holdings, holding_news_map)
