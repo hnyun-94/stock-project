@@ -2,7 +2,7 @@
 
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from src.services import market_external_connectors as connectors
 from src.services.market_external_connectors import ConnectorResult
@@ -63,6 +63,32 @@ class TestOpenDartCategorization(unittest.TestCase):
 
 class TestCollectExternalMetrics(unittest.IsolatedAsyncioTestCase):
     """External connector orchestration tests."""
+
+    async def test_sec_connector_skips_without_user_agent(self):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(connectors, "_fetch_json", new=AsyncMock()) as mock_fetch_json,
+        ):
+            result = await connectors._collect_sec_ticker_count()
+
+        self.assertEqual(result.status, "skip")
+        self.assertIn("SEC_USER_AGENT", result.detail)
+        mock_fetch_json.assert_not_awaited()
+
+    async def test_sec_connector_skips_placeholder_user_agent(self):
+        with (
+            patch.dict(
+                os.environ,
+                {"SEC_USER_AGENT": "stock-project/1.0 (contact: support@example.com)"},
+                clear=True,
+            ),
+            patch.object(connectors, "_fetch_json", new=AsyncMock()) as mock_fetch_json,
+        ):
+            result = await connectors._collect_sec_ticker_count()
+
+        self.assertEqual(result.status, "skip")
+        self.assertIn("placeholder", result.detail)
+        mock_fetch_json.assert_not_awaited()
 
     async def test_collect_returns_empty_when_disabled(self):
         with patch.dict(

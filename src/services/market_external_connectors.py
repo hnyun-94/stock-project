@@ -67,6 +67,23 @@ def _extract_fred_latest_value_x100(payload: Dict[str, Any]) -> Optional[int]:
     return None
 
 
+def _is_placeholder_sec_user_agent(user_agent: str) -> bool:
+    """Detects template or placeholder SEC user-agent values."""
+    lowered = user_agent.strip().lower()
+    if not lowered:
+        return True
+    placeholder_tokens = ("example.com", "your_", "placeholder", "change_me")
+    return any(token in lowered for token in placeholder_tokens)
+
+
+def _resolve_sec_user_agent() -> Optional[str]:
+    """Resolves an SEC-compliant user-agent from env."""
+    raw = os.getenv("SEC_USER_AGENT", "").strip()
+    if not raw or _is_placeholder_sec_user_agent(raw):
+        return None
+    return raw
+
+
 async def _fetch_json(
     url: str,
     params: Optional[Dict[str, Any]] = None,
@@ -207,10 +224,15 @@ async def _collect_opendart_disclosure_count() -> ConnectorResult:
 
 async def _collect_sec_ticker_count() -> ConnectorResult:
     """Collects SEC ticker registry count as US source health signal."""
-    user_agent = os.getenv(
-        "SEC_USER_AGENT",
-        "stock-project/1.0 (contact: support@example.com)",
-    ).strip()
+    user_agent = _resolve_sec_user_agent()
+    if not user_agent:
+        return ConnectorResult(
+            source_id="sec_edgar",
+            status="skip",
+            count=0,
+            detail="SEC_USER_AGENT 미설정 또는 placeholder 값",
+        )
+
     headers = {
         "User-Agent": user_agent,
         "Accept": "application/json",
