@@ -22,7 +22,10 @@ sys.modules['src.utils.logger'] = MagicMock()
 from src.models import MarketIndex, NewsArticle, User
 from src.utils.cache import TTLCache
 from src.utils.deduplicator import deduplicate_news
-from src.utils.report_formatter import build_structured_markdown_report
+from src.utils.report_formatter import (
+    build_structured_markdown_report,
+    markdown_to_html,
+)
 
 
 class TestDataFlowIntegration(unittest.TestCase):
@@ -287,6 +290,7 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("### 오늘 바로 볼 숫자", markdown_text)
         self.assertIn("## 🧱 오늘 판단을 만드는 세 가지 축", markdown_text)
         self.assertIn("## 🕒 시간대 압축판", markdown_text)
+        self.assertTrue(markdown_text.startswith("# 🌤️ 리포트"))
         self.assertIn("리포트 신뢰도: 높음", markdown_text)
         self.assertIn("| 구분 | 내용 | 왜 보나 |", markdown_text)
         self.assertIn("| 항목 | 현재 값 | 읽는 법 |", markdown_text)
@@ -297,6 +301,13 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("## 🧩 용어 풀이", markdown_text)
         self.assertIn("### 삼성전자", markdown_text)
         self.assertIn("| 날짜 | 소스 | 성공률 | 평균 지연 | 판단 |", markdown_text)
+
+    def test_markdown_to_html_inlines_email_styles(self):
+        html_text = markdown_to_html("# 제목\n\n> 요약\n\n| 항목 | 값 |\n| --- | --- |\n| KOSPI | 2600 |")
+
+        self.assertIn("<h1 style=", html_text)
+        self.assertIn("<table role=\"presentation\"", html_text)
+        self.assertIn("<body style=", html_text)
 
 
 if __name__ == "__main__":

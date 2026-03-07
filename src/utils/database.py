@@ -16,7 +16,8 @@ import os
 import sqlite3
 import threading
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from src.utils.logger import global_logger
 
 # Section A: path resolution and singleton lifecycle
@@ -202,6 +203,12 @@ class Database:
                 ON connector_metric_points(metric_key);
             CREATE INDEX IF NOT EXISTS idx_connector_metric_points_timestamp
                 ON connector_metric_points(timestamp);
+
+            CREATE TABLE IF NOT EXISTS runtime_states (
+                state_key TEXT PRIMARY KEY,
+                state_value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
         """)
         self._conn.commit()
 
@@ -740,6 +747,37 @@ class Database:
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    def get_runtime_state(self, state_key: str) -> Optional[str]:
+        """키 기반 런타임 상태 값을 조회합니다."""
+        cursor = self._conn.execute(
+            "SELECT state_value FROM runtime_states WHERE state_key = ?",
+            (state_key,),
+        )
+        row = cursor.fetchone()
+        return str(row[0]) if row else None
+
+    def set_runtime_state(self, state_key: str, state_value: str) -> None:
+        """키 기반 런타임 상태 값을 upsert 합니다."""
+        self._conn.execute(
+            """
+            INSERT INTO runtime_states (state_key, state_value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(state_key) DO UPDATE SET
+                state_value = excluded.state_value,
+                updated_at = excluded.updated_at
+            """,
+            (state_key, state_value, datetime.now().isoformat()),
+        )
+        self._conn.commit()
+
+    def delete_runtime_state(self, state_key: str) -> None:
+        """키 기반 런타임 상태 값을 삭제합니다."""
+        self._conn.execute(
+            "DELETE FROM runtime_states WHERE state_key = ?",
+            (state_key,),
+        )
+        self._conn.commit()
+
     def get_runtime_state_counts(self) -> Dict[str, int]:
         """운영 상태 점검용 핵심 테이블 row count를 반환합니다."""
         table_names = [
@@ -750,6 +788,7 @@ class Database:
             "connector_alert_events",
             "connector_metric_points",
             "prompt_usage_log",
+            "runtime_states",
         ]
         counts: Dict[str, int] = {}
         for table_name in table_names:

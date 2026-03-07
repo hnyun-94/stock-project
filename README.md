@@ -186,6 +186,9 @@ WEBHOOK_SECRET=...
 선택 환경 변수:
 
 - `GEMINI_MODEL`, `GEMINI_MODEL_CANDIDATES`
+- `GEMINI_DAILY_REQUEST_BUDGET`
+- `GEMINI_MAX_REMOTE_CALLS_PER_RUN`
+- `GEMINI_QUOTA_BLOCK_SECONDS`
 - `STOCK_DB_PATH`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_REQUEST_TIMEOUT_SECONDS`
@@ -205,6 +208,8 @@ WEBHOOK_SECRET=...
 - `sec_edgar` 소스를 활성화하면 `SEC_USER_AGENT`는 실제 연락 가능한 정보로 직접 입력해야 합니다.
 - `SEC_USER_AGENT`가 비어 있거나 placeholder 값이면 SEC 커넥터는 자동으로 `skip` 처리됩니다.
 - 텔레그램 발송은 timeout과 메시지 분할을 적용합니다.
+- GitHub Actions의 3시간 스케줄에서는 `PIPELINE_RUN_INTERVAL_HOURS=3`, `GEMINI_DAILY_REQUEST_BUDGET=16` 기준으로 한 런당 Gemini 원격 호출 예산을 자동 계산합니다.
+- Gemini free-tier daily quota를 이미 소진한 상태라면, quota block 상태를 SQLite에 저장해 같은 날의 후속 런은 바로 로컬 fallback으로 전환합니다.
 
 ### 수동 실행
 

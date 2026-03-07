@@ -77,7 +77,25 @@ _PORTAL_NOISE_FRAGMENTS = (
 
 _LOW_SIGNAL_TITLES = {
     "옵션 가이드",
+    "Keep에 바로가기",
 }
+
+_LOW_SIGNAL_FRAGMENTS = (
+    "바로가기",
+    "구독하세요",
+    "주유소 북새통",
+    "오찬종의 매일뉴욕",
+)
+
+_MARKET_SIGNAL_KEYWORDS = (
+    "코스피", "코스닥", "증시", "주식", "환율", "달러", "외국인", "기관",
+    "반도체", "HBM", "GPU", "AI", "인공지능", "실적", "수주", "공시",
+    "엔비디아", "삼성전자", "SK하이닉스", "금리", "연준", "유가",
+)
+
+_MARKET_WEAK_SIGNAL_KEYWORDS = (
+    "중동", "전쟁", "안전자산", "유가", "경기", "고용",
+)
 
 _HOLDING_WATCHPOINTS = {
     "삼성전자": ["HBM 납품 확대", "파운드리 수율", "대형 고객사 CAPEX"],
@@ -144,6 +162,8 @@ def _is_low_signal_text(text: str) -> bool:
     if _is_noise_line(normalized):
         return True
     if any(fragment in lowered_raw for fragment in _PORTAL_NOISE_FRAGMENTS):
+        return True
+    if any(fragment.lower() in lowered_raw for fragment in _LOW_SIGNAL_FRAGMENTS):
         return True
     if normalized in _LOW_SIGNAL_TITLES:
         return True
@@ -241,21 +261,47 @@ def _dedupe_news_items(news_items: Iterable[NewsArticle]) -> List[NewsArticle]:
 
 
 def _signal_news_items(news_items: Iterable[NewsArticle], limit: int = 3) -> List[NewsArticle]:
-    filtered: List[NewsArticle] = []
-    for item in _dedupe_news_items(news_items):
+    scored_items: List[tuple[int, int, NewsArticle]] = []
+    for index, item in enumerate(_dedupe_news_items(news_items)):
         title = _normalize_signal_text(item.title)
         summary = _normalize_signal_text(item.summary or "")
         if _is_low_signal_text(title):
             continue
         if summary and _is_low_signal_text(summary):
             summary = ""
+        relevance_score = sum(2 for keyword in _MARKET_SIGNAL_KEYWORDS if keyword in f"{title} {summary}")
+        relevance_score += sum(1 for keyword in _MARKET_WEAK_SIGNAL_KEYWORDS if keyword in f"{title} {summary}")
+        relevance_score -= sum(3 for fragment in _LOW_SIGNAL_FRAGMENTS if fragment in f"{title} {summary}")
+        scored_items.append(
+            (
+                relevance_score,
+                -index,
+                NewsArticle(
+                    title=title,
+                    link=item.link,
+                    summary=summary or None,
+                    date=item.date,
+                    publisher=item.publisher,
+                ),
+            )
+        )
+
+    if not scored_items:
+        return []
+
+    scored_items.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+    if any(score > 0 for score, _, _ in scored_items):
+        scored_items = [entry for entry in scored_items if entry[0] >= 0]
+
+    filtered: List[NewsArticle] = []
+    for _, _, article in scored_items:
         filtered.append(
             NewsArticle(
-                title=title,
-                link=item.link,
-                summary=summary or None,
-                date=item.date,
-                publisher=item.publisher,
+                title=article.title,
+                link=article.link,
+                summary=article.summary,
+                date=article.date,
+                publisher=article.publisher,
             )
         )
         if len(filtered) >= limit:
@@ -306,6 +352,8 @@ def _describe_risk_factor(joined_context: str) -> str:
 def _describe_why_it_matters(subject: str, joined_context: str) -> str:
     if subject in _HOLDING_WHY_IT_MATTERS:
         return _HOLDING_WHY_IT_MATTERS[subject]
+    if subject in {"시장", "오늘 장", "최근 동향", "국장 개장 전 공통 이슈", "국장 마감 직후 공통 이슈", "미장 개장 전 공통 이슈", "미장 마감 직후 공통 이슈"}:
+        return "시장 판단은 지수 숫자 하나보다 수급, 환율, 거시 변수, 핵심 뉴스가 같은 방향을 가리키는지 함께 보는 것이 더 중요합니다."
     topic_subject = _topic_subject(subject)
     if _contains_any(joined_context, ("HBM", "메모리", "DDR", "낸드")):
         return f"{topic_subject} AI 서버용 메모리 수요와 가격 변화에 민감해, 공급 확대가 확인되면 실적 기대가 빠르게 높아질 수 있습니다."
@@ -363,9 +411,9 @@ def _build_context_views(subject: str, joined_context: str) -> tuple[str, str, s
     why_it_matters = _describe_why_it_matters(subject, joined_context)
     monitor_points = _describe_monitor_points(joined_context)
     risk_factor = _describe_risk_factor(joined_context)
-    positive_view = f"{monitor_points}가 같이 좋아지면 {subject} 상방 시나리오를 더 강하게 볼 수 있습니다."
-    neutral_view = f"{why_it_matters} 아직은 한 번의 뉴스보다 후속 숫자 확인이 더 중요합니다."
-    negative_view = f"{topic_subject} {risk_factor}가 커지거나 {monitor_points}가 약하면 조정 가능성을 먼저 봐야 합니다."
+    positive_view = f"{monitor_points}가 같이 좋아지면 상방 해석이 쉬워집니다."
+    neutral_view = f"{why_it_matters} 그래서 지금은 후속 숫자 확인이 먼저입니다."
+    negative_view = f"{topic_subject} {risk_factor}가 커지거나 {monitor_points}가 약하면 보수적으로 봐야 합니다."
     outlook = f"다음 체크포인트는 {monitor_points}입니다."
     return positive_view, neutral_view, negative_view, outlook
 
@@ -429,7 +477,7 @@ def _recurring_focus_keywords(snapshots: Sequence[Dict[str, Any]], limit: int = 
     for snapshot in snapshots:
         for keyword in snapshot.get("focus_keywords", []):
             if keyword:
-                counter[str(keyword)] += 1
+                counter[_normalize_theme_keyword(str(keyword))] += 1
     return [keyword for keyword, _ in counter.most_common(limit)]
 
 
@@ -900,10 +948,10 @@ def _build_card(
             else ""
         ),
         "watch_points": _clean_text_items(watch_points or [], limit=3),
-        "positive_view": _truncate_text(positive_view, 120),
-        "neutral_view": _truncate_text(neutral_view, 120),
-        "negative_view": _truncate_text(negative_view, 120),
-        "outlook": _truncate_text(outlook, 120),
+        "positive_view": _truncate_text(positive_view, 90),
+        "neutral_view": _truncate_text(neutral_view, 90),
+        "negative_view": _truncate_text(negative_view, 90),
+        "outlook": _truncate_text(outlook, 100),
         "action": _truncate_text(action, 120) if action else "",
         "stance": stance,
     }
@@ -917,7 +965,11 @@ def _build_quick_take_card(
     market_regime: str,
 ) -> Dict[str, Any]:
     support, risk = _pick_primary_market_forces(market_points, focus_keywords)
-    joined_context = " ".join(list(market_points) + list(focus_keywords))
+    joined_context = " ".join(
+        list(market_points)
+        + list(focus_keywords)
+        + [f"{item.name} {item.investor_summary or ''}" for item in list(market_indices)[:2]]
+    )
     why_it_matters = _describe_why_it_matters("시장", joined_context)
     summary = (
         f"지금 시장은 {support}가 버팀목이지만 {risk}도 커서, 급하게 방향을 정하기보다 {market_regime} 시각으로 보는 편이 안전합니다."
@@ -930,6 +982,17 @@ def _build_quick_take_card(
                 120,
             )
         )
+    watch_points: List[str] = []
+    if market_indices:
+        watch_points.append("외국인·기관 수급")
+    if "환율" in risk:
+        watch_points.append("원/달러 환율")
+    elif "지정학" in risk:
+        watch_points.append("국제 뉴스 속보")
+    elif "금리" in risk:
+        watch_points.append("미국 금리·고용 지표")
+    if focus_keywords:
+        watch_points.append(f"{focus_keywords[0]} 후속 뉴스")
     return _build_card(
         summary=summary,
         details=details[:3],
@@ -950,7 +1013,7 @@ def _build_quick_take_card(
             120,
         ),
         why_it_matters=why_it_matters,
-        watch_points=_split_watch_points(_describe_monitor_points(joined_context)),
+        watch_points=watch_points or _split_watch_points(_describe_monitor_points(joined_context)),
     )
 
 
@@ -1287,7 +1350,10 @@ def _build_holding_cards(
                     action=insight.get("action", "").strip(),
                     stance=stance,
                     why_it_matters=_describe_why_it_matters(holding, joined_context),
-                    watch_points=_split_watch_points(_describe_monitor_points(joined_context)),
+                    watch_points=_HOLDING_WATCHPOINTS.get(
+                        holding,
+                        _split_watch_points(_describe_monitor_points(joined_context)),
+                    ),
                 ),
             }
         )
@@ -1337,7 +1403,7 @@ def _build_decision_tiles(
         {
             "label": "시장 톤",
             "value": market_regime,
-            "detail": quick_take.get("summary", ""),
+            "detail": (quick_take.get("details") or ["수급과 환율을 같이 봅니다."])[0],
         },
         {
             "label": "먼저 볼 테마",
