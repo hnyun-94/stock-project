@@ -7,12 +7,15 @@ Codex reading guide:
 3. HTML 변환은 마지막 단계에서만 수행되며, 내부 표준 표현은 Markdown입니다.
 """
 
+import re
+from typing import Optional
+
 import markdown
 
 
 def build_markdown_report(market_summary_md: str, theme_briefings_md: list) -> str:
     """리포트 재료들을 받아 하나의 통일된 마크다운 전문을 생성합니다."""
-    overall_md = "🌤️ 오늘의 주식 인사이트 리포트\n\n"
+    overall_md = "# 🌤️ 오늘의 주식 인사이트 리포트\n\n"
     overall_md += "---\n\n"
     overall_md += market_summary_md + "\n\n"
     overall_md += "---\n\n"
@@ -223,7 +226,7 @@ def _append_lens_section(lines: list[str], insight_lenses: list[dict]) -> None:
         _append_three_view_table(lines, lens)
 
 
-def _append_time_window_digest(lines: list[str], time_windows: list[dict], session_issue_section: dict | None) -> None:
+def _append_time_window_digest(lines: list[str], time_windows: list[dict], session_issue_section: Optional[dict]) -> None:
     if not time_windows:
         return
 
@@ -250,7 +253,7 @@ def _append_time_window_digest(lines: list[str], time_windows: list[dict], sessi
 
 def build_structured_markdown_report(report_payload: dict) -> str:
     """구조화된 payload를 읽기 쉬운 Markdown 리포트로 렌더링합니다."""
-    lines = [report_payload.get("title", "🌤️ 오늘의 주식 인사이트 리포트"), ""]
+    lines = [f"# {report_payload.get('title', '🌤️ 오늘의 주식 인사이트 리포트')}", ""]
 
     subtitle = report_payload.get("subtitle")
     if subtitle:
@@ -348,38 +351,85 @@ def build_structured_markdown_report(report_payload: dict) -> str:
 def markdown_to_html(markdown_str: str) -> str:
     """제공된 마크다운을 이메일 발송용 CSS가 입혀진 HTML로 변환합니다."""
     html_body = markdown.markdown(markdown_str, extensions=["tables"])
+    replacements = [
+        (
+            r"<h1>",
+            '<h1 style="color:#6a4f2b;border-bottom:2px solid #ddc7a4;padding-bottom:8px;margin:0 0 16px;font-size:24px;line-height:1.4;">',
+        ),
+        (
+            r"<h2>",
+            '<h2 style="color:#3b2f24;background:#f2eadb;padding:9px 12px;border-radius:10px;font-size:18px;margin:26px 0 12px;line-height:1.45;">',
+        ),
+        (
+            r"<h3>",
+            '<h3 style="color:#5b4630;font-size:16px;margin:18px 0 10px;line-height:1.45;">',
+        ),
+        (
+            r"<p>",
+            '<p style="margin:0 0 14px;font-size:14px;line-height:1.68;color:#2b241d;">',
+        ),
+        (
+            r"<ul>",
+            '<ul style="margin:0 0 16px;padding-left:20px;">',
+        ),
+        (
+            r"<li>",
+            '<li style="margin:0 0 8px;font-size:14px;line-height:1.65;color:#2b241d;">',
+        ),
+        (
+            r"<blockquote>",
+            '<blockquote style="margin:14px 0;padding:12px 14px;background:#fbf6ea;border-left:4px solid #d7a94b;color:#58452e;border-radius:8px;">',
+        ),
+        (
+            r"<table>",
+            '<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;margin:12px 0 16px;table-layout:fixed;">',
+        ),
+        (
+            r"<th>",
+            '<th style="background:#efe4d2;color:#4f3f2f;font-weight:700;font-size:13px;padding:10px 8px;border:1px solid #e3d5bf;text-align:left;vertical-align:top;">',
+        ),
+        (
+            r"<td>",
+            '<td style="background:#fffdfa;font-size:13px;padding:10px 8px;border:1px solid #eadfcd;vertical-align:top;word-break:keep-all;line-height:1.55;">',
+        ),
+        (
+            r"<hr ?/?>",
+            '<hr style="border:0;border-top:1px solid #e7dccd;margin:28px 0 18px;">',
+        ),
+        (
+            r"<a href=",
+            '<a style="color:#8a5b22;text-decoration:none;" href=',
+        ),
+        (
+            r"<em>",
+            '<em style="color:#6f6253;">',
+        ),
+    ]
+    for pattern, replacement in replacements:
+        html_body = re.sub(pattern, replacement, html_body)
 
     styled_html = f"""
     <html>
     <head>
     <meta charset="utf-8">
     <style>
-        body {{ margin: 0; background: #f6f1e8; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', Dotum, sans-serif; line-height: 1.68; color: #2b241d; }}
-        .report-wrap {{ max-width: 860px; margin: 0 auto; padding: 24px 18px 40px; }}
-        .report-card {{ background: #fffdfa; border: 1px solid #e7dccd; border-radius: 18px; padding: 28px 24px; box-shadow: 0 8px 24px rgba(62, 45, 18, 0.06); }}
-        h1 {{ color: #6a4f2b; border-bottom: 2px solid #ddc7a4; padding-bottom: 8px; margin: 0 0 16px; font-size: 24px; }}
-        h2 {{ color: #3b2f24; background: #f2eadb; padding: 9px 12px; border-radius: 10px; font-size: 18px; margin-top: 26px; }}
-        h3 {{ color: #5b4630; font-size: 16px; margin-top: 18px; margin-bottom: 10px; }}
-        p, li {{ font-size: 14px; }}
-        ul {{ padding-left: 20px; }}
-        blockquote {{ margin: 14px 0; padding: 12px 14px; background: #fbf6ea; border-left: 4px solid #d7a94b; color: #58452e; border-radius: 8px; }}
-        table {{ width: 100%; border-collapse: collapse; margin: 12px 0 16px; table-layout: fixed; }}
-        th {{ background: #efe4d2; color: #4f3f2f; font-weight: 700; font-size: 13px; padding: 10px 8px; border: 1px solid #e3d5bf; text-align: left; }}
-        td {{ background: #fffdfa; font-size: 13px; padding: 10px 8px; border: 1px solid #eadfcd; vertical-align: top; word-break: keep-all; }}
-        tr:nth-child(even) td {{ background: #fcf8f1; }}
-        strong {{ color: #3f3124; }}
-        hr {{ border: 0; border-top: 1px solid #e7dccd; margin: 28px 0 18px; }}
-        a {{ color: #8a5b22; text-decoration: none; }}
-        a:hover {{ text-decoration: underline; }}
-        em {{ color: #6f6253; }}
+        body {{ margin: 0; background: #f6f1e8; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', Dotum, sans-serif; color: #2b241d; }}
     </style>
     </head>
-    <body>
-        <div class="report-wrap">
-            <div class="report-card">
-                {html_body}
-            </div>
-        </div>
+    <body style="margin:0;background:#f6f1e8;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width:100%;background:#f6f1e8;">
+            <tr>
+                <td align="center" style="padding:24px 12px 40px;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:860px;width:100%;background:#fffdfa;border:1px solid #e7dccd;border-radius:18px;">
+                        <tr>
+                            <td style="padding:28px 24px;">
+                                {html_body}
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
     </body>
     </html>
     """

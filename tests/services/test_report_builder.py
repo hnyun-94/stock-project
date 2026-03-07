@@ -49,6 +49,24 @@ class TestReportBuilder(unittest.TestCase):
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered[0].title, "AI 서버 투자 확대")
 
+    def test_signal_news_items_filters_low_signal_shortcuts(self):
+        news_items = [
+            NewsArticle(
+                title="Keep에 바로가기",
+                link="https://noise-shortcut",
+            ),
+            NewsArticle(
+                title="AI 서버 투자 확대",
+                link="https://signal1",
+                summary="데이터센터 투자 확대와 GPU 수요 회복이 이어지고 있습니다.",
+            ),
+        ]
+
+        filtered = _signal_news_items(news_items, limit=2)
+
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0].title, "AI 서버 투자 확대")
+
     def test_build_report_payload_creates_value_focused_sections(self):
         previous_snapshot = {
             "market_regime": "관망",
@@ -285,6 +303,46 @@ class TestReportBuilder(unittest.TestCase):
         self.assertIn("HBM 납품 확대", samsung["watch_points"][0])
         self.assertIn("GPU 출하", nvidia["watch_points"][0])
         self.assertNotIn("옵션 가이드", samsung["summary"])
+
+    def test_build_report_payload_keeps_holding_watch_points_from_cross_contamination(self):
+        payload, _ = build_report_payload(
+            user_name="홍길동",
+            market_summary_md="## 📈 오늘의 시장 요약\n메모리 업종과 AI 수요 회복 기대가 이어집니다.",
+            market_indices=[],
+            market_news=[],
+            datalab_trends=[],
+            theme_sections=[],
+            theme_news_map={},
+            sentiment_score=3,
+            sentiment_label="🟡 중립",
+            holding_insights=[
+                {"holding": "SK하이닉스", "stance": "관찰", "summary": "최근 이슈는 옵션 가이드이며 톤은 혼조입니다.", "action": ""},
+            ],
+            holding_news_map={
+                "SK하이닉스": [
+                    NewsArticle(
+                        title="삼성전자·SK하이닉스 동반 강세…HBM 기대 재부각",
+                        link="https://s1",
+                        summary="HBM 가격과 고객사 발주 기대가 다시 부각됩니다.",
+                    )
+                ],
+            },
+            community_posts=[],
+            recent_report_rows=[],
+            weekly_report_rows=[],
+            monthly_report_rows=[],
+            connector_success_rate_7d={},
+            connector_success_rate_30d={},
+            avg_feedback_score_30d=0,
+            avg_accuracy_30d=0,
+            connector_daily_rollups_7d=[],
+            recent_connector_failures_7d=[],
+            connector_metric_trends_7d=[],
+        )
+
+        sk_hynix = payload["holding_sections"][0]
+        self.assertIn("HBM ASP", sk_hynix["watch_points"][0])
+        self.assertNotIn("파운드리 수율", " ".join(sk_hynix["watch_points"]))
 
 
 if __name__ == "__main__":
