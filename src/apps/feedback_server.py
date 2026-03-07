@@ -9,6 +9,7 @@ import os
 import sys
 import hmac
 import hashlib
+from html import escape
 
 # 프로젝트 최상단 디렉토리 경로 추가 (src 모듈을 찾을 수 있도록 함)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -40,6 +41,29 @@ def verify_signature(user: str, score: int, signature: str) -> bool:
     except Exception:
         return False
 
+
+def render_feedback_success_html(user: str, rating: int) -> str:
+    """피드백 완료 페이지 HTML을 안전하게 렌더링합니다."""
+    safe_user = escape(user, quote=True)
+    return f"""
+        <html>
+            <head>
+                <title>피드백 완료</title>
+                <style>
+                    body {{ font-family: sans-serif; text-align: center; margin-top: 50px; }}
+                    h1 {{ color: #2E86C1; }}
+                    .container {{ border: 1px solid #ddd; padding: 20px; border-radius: 10px; display: inline-block; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>소중한 의견 감사합니다! 💌</h1>
+                    <p><b>{safe_user}</b> 님이 남겨주신 <b>{rating}점</b> 피드백이 AI를 더 가치 있게 만듭니다.</p>
+                </div>
+            </body>
+        </html>
+    """
+
 @app.get("/api/feedback", response_class=HTMLResponse)
 async def submit_feedback(user: str, score: int, signature: str = "", comment: str = ""):
     """
@@ -55,24 +79,7 @@ async def submit_feedback(user: str, score: int, signature: str = "", comment: s
         record_feedback(user_name=user, score=rating, comment=comment)
         
         # 간단한 사용자 안내 웹 페이지 렌더링
-        html_content = f"""
-        <html>
-            <head>
-                <title>피드백 완료</title>
-                <style>
-                    body {{ font-family: sans-serif; text-align: center; margin-top: 50px; }}
-                    h1 {{ color: #2E86C1; }}
-                    .container {{ border: 1px solid #ddd; padding: 20px; border-radius: 10px; display: inline-block; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>소중한 의견 감사합니다! 💌</h1>
-                    <p><b>{user}</b> 님이 남겨주신 <b>{rating}점</b> 피드백이 AI를 더 가치 있게 만듭니다.</p>
-                </div>
-            </body>
-        </html>
-        """
+        html_content = render_feedback_success_html(user, rating)
         return HTMLResponse(content=html_content, status_code=200)
     
     except Exception as e:
