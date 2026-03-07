@@ -30,6 +30,7 @@ check_commit_size_for_ref() {
   fi
 
   scripts/check_commit_size.sh --range "$range" --max-lines "$MAX_COMMIT_LINES"
+  sh scripts/check_context_sync.sh --range "$range"
 }
 
 echo "[pre-push] 커밋 크기 검증 실행 (limit: ${MAX_COMMIT_LINES} lines/commit)"

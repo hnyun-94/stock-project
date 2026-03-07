@@ -23,13 +23,15 @@ description: "Run the project quality gate tests (services + e2e dryrun) before 
 3. 장애 원인/해결 절차는 `done/e2e_incident_response_plan.md`를 기준으로 따릅니다.
 4. 실행 결과와 누락점은 `done/e2e_incident_execution_report.md`에 반영합니다.
 5. 필요 시 `errorCase/`, `todo/todo.md`, `logging/YYYY-MM-DD.md`를 업데이트합니다.
-6. PR 전에는 `scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400`도 함께 실행합니다.
-7. 테스트 실패 상태에서는 커밋/푸시/PR/머지를 진행하지 않습니다.
+6. DB/workflow/runtime-sensitive 변경(`database.py`, `user_manager.py`, `report_scheduler.yml`, `scripts/check_runtime_state.py`)이 있으면 `scripts/check_context_sync.sh --range origin/master..HEAD`도 함께 실행합니다.
+7. PR 전에는 `scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400`도 함께 실행합니다.
+8. 테스트 실패 상태에서는 커밋/푸시/PR/머지를 진행하지 않습니다.
 
 ## Essential Command
 
 ```bash
 uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
+scripts/check_context_sync.sh --range origin/master..HEAD
 ```
 
 ## Hook Alignment
