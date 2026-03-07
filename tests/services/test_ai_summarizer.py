@@ -417,13 +417,117 @@ class TestGeminiQuotaGuard(unittest.IsolatedAsyncioTestCase):
                 "src.services.ai_summarizer._generate_content_with_model",
                 new=AsyncMock(side_effect=quota_error),
             ) as mock_generate,
+            patch("src.services.ai_summarizer.asyncio.sleep", new=AsyncMock()) as mock_sleep,
         ):
             with self.assertRaises(GeminiQuotaExhaustedError):
                 await safe_gemini_call("prompt")
             with self.assertRaises(GeminiQuotaExhaustedError):
                 await safe_gemini_call("prompt-2")
 
+        self.assertEqual(mock_generate.await_count, 2)
+        self.assertTrue(any(call.args == (54,) for call in mock_sleep.await_args_list))
+
+    async def test_safe_gemini_call_retries_after_short_quota_delay(self):
+        quota_error = DummyClientError(
+            429,
+            {
+                "error": {
+                    "status": "RESOURCE_EXHAUSTED",
+                    "message": "Quota exceeded for metric",
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                            "violations": [
+                                {
+                                    "quotaId": "GenerateRequestsPerMinutePerModel-FreeTier",
+                                }
+                            ],
+                        },
+                        {
+                            "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                            "retryDelay": "6s",
+                        },
+                    ],
+                }
+            },
+        )
+
+        with (
+            patch(
+                "src.services.ai_summarizer.get_db",
+                return_value=types.SimpleNamespace(
+                    get_runtime_state=lambda _key: None,
+                    set_runtime_state=lambda _key, _value: None,
+                    delete_runtime_state=lambda _key: None,
+                ),
+            ),
+            patch("src.services.ai_summarizer._get_client", return_value=MagicMock()),
+            patch(
+                "src.services.ai_summarizer._get_available_models",
+                new=AsyncMock(return_value=["gemini-2.5-flash"]),
+            ),
+            patch(
+                "src.services.ai_summarizer._generate_content_with_model",
+                new=AsyncMock(side_effect=[quota_error, types.SimpleNamespace(text="ok")]),
+            ) as mock_generate,
+            patch("src.services.ai_summarizer.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+        ):
+            result = await safe_gemini_call("prompt")
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(mock_generate.await_count, 2)
+        self.assertTrue(any(call.args == (6,) for call in mock_sleep.await_args_list))
+
+    async def test_safe_gemini_call_falls_back_when_quota_delay_exceeds_budget(self):
+        quota_error = DummyClientError(
+            429,
+            {
+                "error": {
+                    "status": "RESOURCE_EXHAUSTED",
+                    "message": "Quota exceeded for metric",
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                            "violations": [
+                                {
+                                    "quotaId": "GenerateRequestsPerMinutePerModel-FreeTier",
+                                }
+                            ],
+                        },
+                        {
+                            "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                            "retryDelay": "61s",
+                        },
+                    ],
+                }
+            },
+        )
+
+        with (
+            patch(
+                "src.services.ai_summarizer.get_db",
+                return_value=types.SimpleNamespace(
+                    get_runtime_state=lambda _key: None,
+                    set_runtime_state=lambda _key, _value: None,
+                    delete_runtime_state=lambda _key: None,
+                ),
+            ),
+            patch("src.services.ai_summarizer._get_client", return_value=MagicMock()),
+            patch(
+                "src.services.ai_summarizer._get_available_models",
+                new=AsyncMock(return_value=["gemini-2.5-flash"]),
+            ),
+            patch(
+                "src.services.ai_summarizer._generate_content_with_model",
+                new=AsyncMock(side_effect=quota_error),
+            ) as mock_generate,
+            patch("src.services.ai_summarizer.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+        ):
+            with self.assertRaises(GeminiQuotaExhaustedError):
+                await safe_gemini_call("prompt")
+
         self.assertEqual(mock_generate.await_count, 1)
+        self.assertFalse(any(call.args == (61,) for call in mock_sleep.await_args_list))
 
     async def test_safe_gemini_call_respects_run_budget(self):
         with patch.dict(os.environ, {"GEMINI_MAX_REMOTE_CALLS_PER_RUN": "1"}, clear=False):
