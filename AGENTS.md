@@ -117,12 +117,23 @@
   - `git switch -c`, `git add`, `git commit`, `git push -u origin`
   - `gh pr create --body-file`, `gh pr view`, `gh pr merge --squash --delete-branch`
   - 위 명령은 품질 게이트 통과 후 사용하고, hang 방지 규칙을 지킵니다.
+- **Delegated GitHub Collaboration / 상시 위임 범위**
+  - 아래 명령은 일반적인 GitHub 협업 흐름으로 간주하고, 별도 사용자 재확인 없이 진행합니다.
+  - `git push origin <branch>`, `git push -u origin <branch>`
+  - `gh pr create --body-file`, `gh pr view`, `gh pr checks`, `gh pr merge --squash --delete-branch`
+  - `gh run view`, `gh run watch`, `gh workflow view`, `gh repo view`
+  - 전제 조건:
+    - 로컬 변경 의도와 목적이 명확해야 함
+    - 품질 게이트 또는 `pre-push` 자동 검증을 통과해야 함
+    - force push, destructive option, 관리자급 설정 변경이 아니어야 함
 - **Always Review / 항상 재확인**
   - `.env`, secret, credential, mail account, webhook secret 관련 명령
   - `uv run python -m src.main` 같은 실제 외부 호출/발송 실행
   - `uv run python -m src.apps.feedback_server`, `docker-compose up` 같은 서버/컨테이너 실행
   - `scripts/update_notion_*`, `scripts/provision_prompt_db.py`, schema/data mutation
   - `rm`, `git reset --hard`, `git checkout --`, 대량 삭제/복구
+  - `git push --force`, remote branch 삭제, `gh api`, `gh auth`, `gh secret`, `gh variable`
+  - repo/admin setting 변경, mass edit, release 삭제 같은 관리자급 GitHub 작업
 
 판단 원칙:
 
