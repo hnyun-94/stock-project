@@ -2,7 +2,7 @@
 # live secret(.env)와 외부 발송 권한이 있으므로 broad auto-approval는 사용하지 않습니다.
 mode = "workspace-write"
 # 반복 승인 피로를 줄이기 위해 네트워크는 허용하되, 고위험 명령은 on-request를 유지합니다.
-# 사용자가 명시적으로 위임한 `uv` prefix와 일반적인 GitHub 협업 명령(push/PR/CI 조회)은
+# 사용자가 명시적으로 위임한 `uv` prefix와 현재 repo 범위의 `gh` 협업/조회 명령은
 # 정책상 상시 위임 범위로 다루고, 관리자급 GitHub 명령과 파괴적 명령만 계속 재확인합니다.
 network = "allow"
 ask-for-approval = "on-request"
