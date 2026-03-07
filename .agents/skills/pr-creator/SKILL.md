@@ -16,9 +16,12 @@ description: "Create and merge PRs safely with gh CLI using --body-file, after p
 ## Instructions
 
 1. feature 브랜치(`feat/*`, `fix/*`, `refactor/*`, `test/*`)인지 확인합니다.
-2. 커밋당 변경량이 400줄 이하인지 검증합니다.
+2. 계획서의 커밋 예산이 정의돼 있는지 확인합니다.
+   - 예산은 보통 커밋당 `300~350줄 내외`로 잡습니다.
+   - 수동 커밋 크기 검증은 예산 초과가 의심될 때만 수행합니다.
 3. 품질 게이트 테스트를 통과시킵니다.
 4. 커밋을 생성하고 원격 브랜치로 push합니다.
+   - 최종 커밋 크기 검증은 `pre-push` 훅이 자동 수행합니다.
 5. PR 본문을 `.tmp/pr_body.md`로 작성합니다.
    - PM/TPM/기획자/개발자/신입개발자/운영자 리뷰 섹션 필수
    - `critical`/`major`/`minor` 심각도와 조치 내용 포함
@@ -33,8 +36,10 @@ description: "Create and merge PRs safely with gh CLI using --body-file, after p
 
 ```bash
 # 1) Quality gate
-scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400
 uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
+
+# 필요할 때만 수동 커밋 크기 점검
+scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400
 
 # 2) Commit + push
 git add <FILES>

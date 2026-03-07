@@ -135,6 +135,12 @@
 - 브랜치: `feat/`, `fix/`, `refactor/`, `test/`
 - 커밋: Conventional Commits (`feat:`, `fix:` 등) 상세한 본문 작성 필수.
 - 커밋 크기: **커밋 1개당 변경량(추가+삭제) 400줄 이하** 유지 (기능 단위 분할 원칙).
+- 큰 작업은 **계획서 단계에서 커밋 예산(commit budget)** 을 먼저 잡습니다.
+  - 각 스트림/커밋 후보별 예상 변경 줄수를 미리 적습니다.
+  - 목표치는 400줄보다 낮은 `300~350줄 내외`로 잡아 편집 중 증분을 흡수합니다.
+  - 실제 커밋 시에는 이 예산 기준으로 분할하고, 별도 수동 `check_commit_size` 실행은 기본 필수가 아닙니다.
+  - 다만 편집 중 범위가 크게 늘었거나 예산 초과가 의심되면 수동 검증을 사용합니다.
+- 최종 강제 검증은 `pre-push`와 `run_quality_gate.sh`가 담당합니다.
 - PR 본문: 아래 6개 관점 리뷰 섹션 필수
   - PM / TPM / 기획자 / 개발자 / 신입개발자 / 운영자
 - 리뷰 정책:
@@ -153,15 +159,17 @@
 
 코드 변경이 발생한 작업은 아래 단계가 **모두 완료되어야만 완료 처리**합니다.
 
-1. 기능 단위 분할 및 우선순위 정리
+1. 기능 단위 분할, 우선순위 정리, 커밋 예산 산정
 2. 품질 게이트 실행 (`uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q`)
-3. 커밋 크기 검증 (`scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400`)
-4. 기능 단위 커밋 생성 (Conventional Commit)
-5. 원격 브랜치 push
-6. PR 생성 (`gh pr create --body-file`) + 6개 역할 리뷰 섹션 작성
-7. 리뷰 이슈 분류/처리 (`critical`은 동일 PR 즉시 수정 후 재검증)
-8. 머지 (`gh pr merge --squash --delete-branch`)
-9. 후속 문서 갱신 (`todo/todo.md`, `task/*.md`, `done/*.md` 필요 시, 로컬 `logging/YYYY-MM-DD.md`는 선택)
+3. 기능 단위 커밋 생성 (Conventional Commit)
+  - 커밋은 계획서의 커밋 예산에 맞춰 분리합니다.
+  - 수동 `scripts/check_commit_size.sh`는 drift 의심 시에만 사용합니다.
+4. 원격 브랜치 push
+  - `pre-push`에서 커밋 크기 정책이 자동 검증됩니다.
+5. PR 생성 (`gh pr create --body-file`) + 6개 역할 리뷰 섹션 작성
+6. 리뷰 이슈 분류/처리 (`critical`은 동일 PR 즉시 수정 후 재검증)
+7. 머지 (`gh pr merge --squash --delete-branch`)
+8. 후속 문서 갱신 (`todo/todo.md`, `task/*.md`, `done/*.md` 필요 시, 로컬 `logging/YYYY-MM-DD.md`는 선택)
 
 추가 규칙:
 - Codex는 기본적으로 위 1~9 단계를 순차 수행합니다.

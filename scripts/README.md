@@ -7,9 +7,9 @@
 | 파일명                    | 용도 |
 | ------------------------- | ---- |
 | `session_bootstrap.sh`    | 세션 시작 시 문서/형상/훅/기준선 테스트를 한 번에 점검 |
-| `run_quality_gate.sh`     | py_compile + 커밋 크기 + 문맥 동기화 + 표준 pytest 게이트 실행 |
+| `run_quality_gate.sh`     | 최종 브랜치 기준 py_compile + 커밋 크기 + 문맥 동기화 + 표준 pytest 게이트 실행 |
 | `check_git_hygiene.sh`    | 금지 경로, 절대 경로, 실제 이메일 노출 여부를 검사 |
-| `check_commit_size.sh`    | 커밋당 변경량(추가+삭제) 400줄 제한 검증 |
+| `check_commit_size.sh`    | 커밋당 변경량(추가+삭제) 400줄 제한 검증. 수동 실행은 drift 의심 시 보조용이고, 최종 강제는 `pre-push`에서 수행 |
 | `check_context_sync.sh`   | 코드/문서 동기화 및 런타임 smoke check |
 | `check_review_policy.sh`  | 역할별 리뷰, 근거, 판단이 task/done 문서에 남았는지 검사 |
 | `check_runtime_state.py`  | SQLite 런타임 상태 점검 |
