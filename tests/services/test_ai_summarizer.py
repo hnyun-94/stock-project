@@ -44,7 +44,9 @@ from src.services.ai_summarizer import (
     generate_market_summary,
     _is_model_not_found_error,
     _parse_batch_theme_response,
+    _parse_holding_insights_response,
     _pick_runtime_model,
+    generate_holding_insights,
     generate_theme_briefings_batch,
 )
 
@@ -218,6 +220,54 @@ class TestGenerateMarketSummaryPrompt(unittest.IsolatedAsyncioTestCase):
 
         sent_prompt = mock_call.await_args.args[0]
         self.assertIn("총 5줄 이내", sent_prompt)
+
+
+class TestHoldingInsights(unittest.IsolatedAsyncioTestCase):
+    """보유 종목별 인사이트 생성 테스트."""
+
+    def test_parse_holding_insights_response_fills_missing_holdings(self):
+        response_text = (
+            '{"insights":['
+            '{"holding":"삼성전자","stance":"유지","summary":"메모리 수요 개선","action":"수요 추세 확인"}'
+            ']}'
+        )
+        parsed = _parse_holding_insights_response(
+            response_text,
+            holdings=["삼성전자", "SK하이닉스"],
+            holding_news_map={
+                "삼성전자": [NewsArticle(title="삼성전자 실적 개선", link="a.com")],
+                "SK하이닉스": [NewsArticle(title="SK하이닉스 HBM 확대", link="b.com")],
+            },
+        )
+
+        self.assertEqual(len(parsed), 2)
+        self.assertEqual(parsed[0]["holding"], "삼성전자")
+        self.assertEqual(parsed[1]["holding"], "SK하이닉스")
+
+    async def test_generate_holding_insights_uses_json_mode(self):
+        response_text = (
+            '{"insights":['
+            '{"holding":"삼성전자","stance":"유지","summary":"메모리 수요 개선","action":"수요 추세 확인"}'
+            ']}'
+        )
+        with patch(
+            "src.services.ai_summarizer.safe_gemini_call",
+            new=AsyncMock(return_value=response_text),
+        ) as mock_call:
+            results = await generate_holding_insights(
+                holdings=["삼성전자"],
+                market_summary="시장 요약",
+                theme_briefings=["### AI\n- 반도체 수요 증가"],
+                holding_news_map={
+                    "삼성전자": [NewsArticle(title="삼성전자 실적 개선", link="a.com")]
+                },
+            )
+
+        self.assertEqual(results[0]["holding"], "삼성전자")
+        self.assertEqual(
+            mock_call.await_args.kwargs.get("response_mime_type"),
+            "application/json",
+        )
 
 
 if __name__ == "__main__":

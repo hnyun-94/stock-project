@@ -132,6 +132,31 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(rates["opendart"], 0.5)
         self.assertEqual(rates["sec_edgar"], 1.0)
 
+    # --- 리포트 스냅샷 테스트 ---
+
+    def test_insert_and_get_recent_report_snapshot(self):
+        """사용자별 최근 리포트 스냅샷 저장/조회."""
+        self.db.insert_report_snapshot(
+            user_name="홍길동",
+            headline="시장 심리 개선",
+            snapshot_json='{"focus_keywords":["AI"]}',
+            report_text="리포트 본문",
+        )
+
+        rows = self.db.get_recent_report_snapshots("홍길동", limit=2)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["headline"], "시장 심리 개선")
+        self.assertIn('"AI"', rows[0]["snapshot_json"])
+
+    def test_get_report_snapshots_since_filters_by_user(self):
+        """기간 조회가 사용자 기준으로 분리된다."""
+        self.db.insert_report_snapshot("A", "헤드라인A", "{}", "본문A")
+        self.db.insert_report_snapshot("B", "헤드라인B", "{}", "본문B")
+
+        rows = self.db.get_report_snapshots_since("A", days=1)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["user_name"], "A")
+
 
 if __name__ == "__main__":
     unittest.main()

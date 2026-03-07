@@ -8,57 +8,49 @@
 
 import os
 import sys
-import re
+import json
 import traceback
 import asyncio
-from datetime import datetime
 from dotenv import load_dotenv
 
 # 스크립트 실행을 위해 환경변수 및 모듈 경로 로드
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
-from src.crawlers.naver_news import get_market_news, search_news_by_keyword
-from src.crawlers.daum_news import search_daum_news_by_keyword
-from src.crawlers.google_news import search_google_news_by_keyword
+from src.crawlers.naver_news import get_market_news
 from src.crawlers.market_index import get_market_indices
-from src.crawlers.community import get_naver_board_posts, get_dc_stock_gallery, get_popular_stocks, get_reddit_wallstreetbets
-from src.crawlers.google_trends import get_daily_trending_searches
+from src.crawlers.community import get_dc_stock_gallery, get_reddit_wallstreetbets
 from src.crawlers.naver_datalab import get_naver_datalab_trends
-from src.crawlers.article_parser import enrich_news_with_leads
 from src.crawlers.http_client import close_session
 from src.crawlers.browser_pool import BrowserPool
 
 from src.services.ai_summarizer import (
     generate_market_summary,
-    generate_personalized_portfolio_analysis,
     generate_theme_briefing,
     generate_theme_briefings_batch,
+    generate_holding_insights,
 )
 from src.services.prompt_manager import fetch_prompts_from_notion
+from src.services.community_safety import (
+    filter_community_posts_by_source,
+    flatten_safe_community_posts,
+)
 from src.services.market_source_governance import (
     evaluate_active_sources,
     get_default_source_policies,
     parse_active_source_ids,
 )
-from src.services.market_signal_summary import (
-    PricePoint,
-    build_market_snapshot,
-    render_market_snapshot_markdown,
-)
 from src.services.market_external_connectors import (
     collect_external_source_snapshot,
-    render_external_connector_telemetry_markdown,
 )
-from src.utils.report_formatter import build_markdown_report
+from src.services.report_builder import build_report_payload
+from src.services.topic_news import collect_topic_news
+from src.utils.report_formatter import build_structured_markdown_report
 from src.services.user_manager import fetch_active_users
 from src.services.ai_tracker import record_prediction_snapshot
 from src.services.feedback_manager import generate_feedback_links_html
-from src.services.backtesting_scorer import generate_backtesting_report
-from src.utils.cache import crawl_cache
-from src.utils.deduplicator import deduplicate_news
-from src.utils.sentiment import analyze_sentiment, format_sentiment_section
-from src.utils.database import close_db
+from src.utils.sentiment import analyze_sentiment
+from src.utils.database import close_db, get_db
 
 from src.services.notifier.email import EmailSender
 from src.services.notifier.telegram import TelegramSender
@@ -142,56 +134,6 @@ def _run_source_governance_check() -> None:
         )
 
 
-def _parse_numeric_value(raw_text: str) -> float | None:
-    """문자열에서 첫 번째 숫자 값을 파싱합니다."""
-    match = re.search(r"-?\d+(?:\.\d+)?", raw_text.replace(",", ""))
-    if not match:
-        return None
-    try:
-        return float(match.group(0))
-    except ValueError:
-        return None
-
-
-def _build_market_snapshot_markdown(
-    market_indices,
-    market_news,
-    community_posts,
-    datalab_trends,
-    external_source_metrics=None,
-) -> str:
-    """현재 수집 데이터 기반 정량 스냅샷 마크다운을 생성합니다."""
-    snapshot_date = datetime.now().strftime("%Y-%m-%d")
-    index_series: dict[str, list[PricePoint]] = {}
-    for item in market_indices:
-        close = _parse_numeric_value(item.value)
-        if close is None:
-            continue
-        index_series[item.name] = [PricePoint(date=snapshot_date, close=close)]
-
-    ratio_values = []
-    for trend in datalab_trends or []:
-        ratio = _parse_numeric_value(getattr(trend, "traffic", ""))
-        if ratio is not None:
-            ratio_values.append(ratio)
-    avg_trend_ratio = sum(ratio_values) / len(ratio_values) if ratio_values else None
-
-    event_counts = {
-        "market_news": len(market_news or []),
-        "community_posts": len(community_posts or []),
-    }
-    if external_source_metrics:
-        for source_id, count in external_source_metrics.items():
-            event_counts[f"source:{source_id}"] = count
-
-    snapshot = build_market_snapshot(
-        index_series=index_series,
-        event_counts=event_counts,
-        keyword_trend_change_pct=avg_trend_ratio,
-    )
-    return render_market_snapshot_markdown(snapshot)
-
-
 async def run_pipeline() -> None:
     """
     역할 (Role):
@@ -231,7 +173,30 @@ async def run_pipeline() -> None:
         # 2. 공통 시황 브리핑 생성
         global_logger.info("[2/5] AI 시장 시황 요약 중...")
         market_summary_md = await generate_market_summary(market_indices, market_news, datalab_trends)
-        
+
+        # 커뮤니티 안전 필터 적용
+        community_filter_results = filter_community_posts_by_source(
+            {
+                "dc_stock_gallery": dc_posts,
+                "reddit_wallstreetbets": reddit_posts,
+            },
+            max_items_per_source=3,
+        )
+        for source_id, result in community_filter_results.items():
+            global_logger.info(
+                "[CommunitySafety] %s input=%s kept=%s filtered=%s skipped=%s reason=%s",
+                source_id,
+                result.input_count,
+                len(result.kept_posts),
+                result.filtered_count,
+                result.skipped,
+                result.reason or "ok",
+            )
+        safe_community_posts = flatten_safe_community_posts(
+            community_filter_results,
+            max_items=4,
+        )
+
         # 3. 사용자 정보 조회 [Task 6.21, REQ-Q07]
         global_logger.info("[3/5] Notion에서 수신 대상자 조회 중...")
         users = await asyncio.to_thread(fetch_active_users)
@@ -242,134 +207,134 @@ async def run_pipeline() -> None:
             
         global_logger.info(f"총 {len(users)}명의 대상자를 확인했습니다.")
         
-        # 관심 키워드가 없을 경우를 대비해 기본값으로 커뮤니티 트렌드나 구글 파워검색어 등을 활용할 수 있음
-        # 여기서는 디시 식갤 장세 민심 + 글로벌 레딧(WallStreetBets) 밈 요약을 합친 전체 시장 민심 브리핑 추가
-        combined_community_posts = dc_posts + reddit_posts
-        common_theme_md = await generate_theme_briefing("글로벌 및 국내 시장 민심(식갤+WSB)", market_news[:2], combined_community_posts)
+        common_theme_md = ""
+        if safe_community_posts:
+            common_theme_md = await generate_theme_briefing(
+                "글로벌 및 국내 시장 민심",
+                market_news[:2],
+                safe_community_posts,
+            )
 
         # 시장 감정 지표 분석 [Task 6.19, REQ-F04]
-        sentiment_score, sentiment_label = analyze_sentiment(market_news, combined_community_posts)
-        sentiment_md = format_sentiment_section(sentiment_score, sentiment_label)
+        sentiment_score, sentiment_label = analyze_sentiment(
+            market_news,
+            safe_community_posts,
+        )
 
         # 외부 무료 소스 커넥터 지표 수집 + 텔레메트리 (옵션)
-        external_source_metrics, external_connector_results = (
+        _, _ = (
             await collect_external_source_snapshot()
         )
-        external_telemetry_md = render_external_connector_telemetry_markdown(
-            external_connector_results
-        )
 
-        # 시장 정량 통계 스냅샷 [P1]
-        market_snapshot_md = _build_market_snapshot_markdown(
-            market_indices=market_indices,
-            market_news=market_news,
-            community_posts=combined_community_posts,
-            datalab_trends=datalab_trends,
-            external_source_metrics=external_source_metrics,
-        )
-
-        # 과거 스냅샷 적중률 분석 (PM Task)
-        global_logger.info("[+] 과거 AI 예측 백테스팅(Scoring) 분석 중...")
-        backtest_report_md = await generate_backtesting_report()
+        db = get_db()
+        connector_success_rate_7d = db.get_connector_success_rate(days=7)
+        connector_success_rate_30d = db.get_connector_success_rate(days=30)
+        avg_feedback_score_30d = db.get_average_score(days=30)
+        avg_accuracy_30d = db.get_average_accuracy(days=30)
 
         # 4. 개별 대상자 맞춤형 리포트 발송
         for idx, user in enumerate(users, 1):
             name = user.name
             
             global_logger.info(f"\n[4/5] ({idx}/{len(users)}) '{name}'님 맞춤형 데이터 생성 중...")
-            theme_briefings = []
-            if backtest_report_md:
-                theme_briefings.append(backtest_report_md)
-            if market_snapshot_md:
-                theme_briefings.append(market_snapshot_md)
-            if external_telemetry_md:
-                theme_briefings.append(external_telemetry_md)
-            theme_briefings.append(sentiment_md)  # 시장 심리 온도계 [REQ-F04]
-            theme_briefings.append(common_theme_md)
-            
-            # 사용자 키워드 뉴스 완전 병렬 크롤링 + 캐시 [Task 6.2/6.8, REQ-P02/F03]
-            # 동일 키워드가 여러 사용자에게 등록된 경우 캐시에서 즉시 반환합니다.
             keywords_to_search = user.keywords[:2]
-            global_logger.info(f"      - {keywords_to_search} 키워드 뉴스 수집 중 (캐시 적용)...")
-            
-            # 캐시 미스/히트 분리 - 캐시에 있는 키워드는 바로 사용, 없는 키워드만 크롤링
-            kw_news_results = []
-            uncached_keywords = []
-            uncached_indices = []
-            
-            for i, kw in enumerate(keywords_to_search):
-                cached = crawl_cache.get(f"keyword_news:{kw}")
-                if cached is not None:
-                    kw_news_results.append(cached)
-                    global_logger.info(f"        🎯 '{kw}' 캐시 적중 - 크롤링 생략")
-                else:
-                    kw_news_results.append(None)  # placeholder
-                    uncached_keywords.append(kw)
-                    uncached_indices.append(i)
-            
-            # 캐시 미스된 키워드만 병렬 크롤링
-            if uncached_keywords:
-                all_crawl_tasks = []
-                for kw in uncached_keywords:
-                    all_crawl_tasks.extend([
-                        search_news_by_keyword(kw, 3),
-                        search_daum_news_by_keyword(kw, 3),
-                        search_google_news_by_keyword(kw, 3),
-                    ])
-                
-                all_results = await asyncio.gather(*all_crawl_tasks, return_exceptions=True)
-                
-                # 결과를 키워드별로 3개씩 그룹핑 + 캐시 저장
-                for j, idx in enumerate(uncached_indices):
-                    chunk = all_results[j*3:(j+1)*3]
-                    flat_news = []
-                    for res in chunk:
-                        if isinstance(res, list):
-                            flat_news.extend(res)
-                    news_list = deduplicate_news(flat_news)[:7]  # 중복 제거 후 토큰 초과 방지
-                    # 리드 문단 추출로 AI 컨텍스트 품질 향상 [Task 6.10, REQ-F01]
-                    news_list = await enrich_news_with_leads(news_list, max_articles=3)
-                    kw_news_results[idx] = news_list
-                    # 캐시에 저장 (10분 TTL) - 리드 포함
-                    crawl_cache.set(f"keyword_news:{uncached_keywords[j]}", news_list)
-            
+            holdings_to_analyze = user.holdings[:4]
+            search_topics = list(dict.fromkeys(keywords_to_search + holdings_to_analyze))
+            global_logger.info(
+                f"      - 토픽 뉴스 수집 중 (키워드 {keywords_to_search}, 보유종목 {holdings_to_analyze})..."
+            )
+            topic_news_map = await collect_topic_news(
+                search_topics,
+                cache_prefix="topic_news",
+            )
+
             # 수집된 데이터를 바탕으로 AI 테마 브리핑 요약 (Gemini Batch 1회 호출)
             theme_items = []
-            for keyword, kw_news in zip(keywords_to_search, kw_news_results):
+            for keyword in keywords_to_search:
                 global_logger.info(f"      - '{keyword}' 테마 배치 요약 입력 구성 중...")
-                theme_items.append({
-                    "keyword": keyword,
-                    "keyword_news": kw_news or [],
-                    "community_posts": [],
-                })
-            kw_md_results = await generate_theme_briefings_batch(theme_items)
-            theme_briefings.extend(kw_md_results)
-
-            # 5. 초개인화 포트폴리오 분석 추가 (보유 종목이 있는 경우)
-            if user.holdings:
-                global_logger.info(f"      - '{name}'님 보유 종목({user.holdings}) 기반 초개인화 AI 맞춤 분석 중...")
-                portfolio_analysis_md = await generate_personalized_portfolio_analysis(
-                    user.holdings, 
-                    market_summary_md, 
-                    theme_briefings
+                theme_items.append(
+                    {
+                        "keyword": keyword,
+                        "keyword_news": topic_news_map.get(keyword, []),
+                        "community_posts": [],
+                    }
                 )
-                # 테마 브리핑 목록 맨 앞에 포트폴리오 분석 결과 삽입 및 스냅샷 DB 보관
-                if portfolio_analysis_md:
-                    theme_briefings.insert(0, portfolio_analysis_md)
-                    record_prediction_snapshot(name, ", ".join(user.holdings), portfolio_analysis_md)
+            kw_md_results = await generate_theme_briefings_batch(theme_items)
+            theme_sections = []
+            if common_theme_md:
+                theme_sections.append(
+                    {"keyword": "시장 민심", "briefing_md": common_theme_md}
+                )
+            for keyword, md_text in zip(keywords_to_search, kw_md_results):
+                theme_sections.append({"keyword": keyword, "briefing_md": md_text})
+
+            holding_news_map = {
+                holding: topic_news_map.get(holding, [])
+                for holding in holdings_to_analyze
+            }
+            holding_insights = []
+            if holdings_to_analyze:
+                global_logger.info(
+                    f"      - '{name}'님 보유 종목({holdings_to_analyze}) 기반 개별 인사이트 생성 중..."
+                )
+                holding_insights = await generate_holding_insights(
+                    holdings_to_analyze,
+                    market_summary_md,
+                    [section["briefing_md"] for section in theme_sections],
+                    holding_news_map,
+                )
+
+            recent_report_rows = db.get_recent_report_snapshots(name, limit=2)
+            weekly_report_rows = db.get_report_snapshots_since(name, days=7)
+            monthly_report_rows = db.get_report_snapshots_since(name, days=30)
+
+            report_payload, report_snapshot = build_report_payload(
+                user_name=name,
+                market_summary_md=market_summary_md,
+                market_indices=market_indices,
+                market_news=market_news,
+                datalab_trends=datalab_trends or [],
+                theme_sections=theme_sections,
+                sentiment_score=sentiment_score,
+                sentiment_label=sentiment_label,
+                holding_insights=holding_insights,
+                recent_report_rows=recent_report_rows,
+                weekly_report_rows=weekly_report_rows,
+                monthly_report_rows=monthly_report_rows,
+                connector_success_rate_7d=connector_success_rate_7d,
+                connector_success_rate_30d=connector_success_rate_30d,
+                avg_feedback_score_30d=avg_feedback_score_30d,
+                avg_accuracy_30d=avg_accuracy_30d,
+            )
 
             # 6. 리포트 포매팅 및 메일/메신저 발송
             global_logger.info(f"[5/5] '{name}'님 채널별 알림 전송 중... (등록된 채널: {', '.join(user.channels)})")
             
-            # 발송할 알림은 HTML 대신 통합된 순수 Markdown으로 넘기고 채널별(이메일, 텔레그램)로 자체 렌더링하도록 변경
-            report_md_content = build_markdown_report(market_summary_md, theme_briefings)
+            report_md_content = build_structured_markdown_report(report_payload)
+            db.insert_report_snapshot(
+                user_name=name,
+                headline=(report_payload.get("headline_changes") or [""])[0],
+                snapshot_json=json.dumps(report_snapshot, ensure_ascii=False),
+                report_text=report_md_content,
+            )
+
+            if holding_insights:
+                snapshot_text = "\n".join(
+                    f"{item['holding']}: {item['stance']} | {item['summary']} | {item['action']}"
+                    for item in holding_insights
+                )
+                record_prediction_snapshot(
+                    name,
+                    ", ".join(holdings_to_analyze),
+                    snapshot_text,
+                )
             
             # 사용자 맞춤 피드백 양식 꼬리말 동적 삽입 (별점 1~5 개별 HMAC 서명 링크)
             feedback_links = generate_feedback_links_html(name)
             feedback_footer = f"\n\n---\n💬 오늘 리포트 어떠셨나요?\n\n{feedback_links}\n"
             report_md_content += feedback_footer
             
-            subject = f"오늘 하루의 시황 요약 및 맞춤 테마 리포트 - {name}님"
+            subject = f"최근 동향 중심 시황 요약 리포트 - {name}님"
             
             # 팩토리 패턴 대신 전략 적용 (Dictionary Mapping)
             notifiers = {
