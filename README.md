@@ -186,6 +186,9 @@ WEBHOOK_SECRET=...
 
 - `GEMINI_MODEL`, `GEMINI_MODEL_CANDIDATES`
 - `STOCK_DB_PATH`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_REQUEST_TIMEOUT_SECONDS`
+- `TELEGRAM_MESSAGE_MAX_LENGTH`
 - `ACTIVE_MARKET_SOURCES`
 - `COMMUNITY_ENABLED_SOURCES`
 - `PIPELINE_RUN_INTERVAL_HOURS`
@@ -194,6 +197,13 @@ WEBHOOK_SECRET=...
 - `EXTERNAL_CONNECTOR_ALERT_FAILURE_RATE_1H`
 - `EXTERNAL_CONNECTOR_ALERT_FAILURE_RATE_24H`
 - `EXTERNAL_CONNECTOR_ALERT_AVG_LATENCY_MS`
+- `SEC_USER_AGENT`
+
+주의:
+
+- `sec_edgar` 소스를 활성화하면 `SEC_USER_AGENT`는 실제 연락 가능한 정보로 직접 입력해야 합니다.
+- `SEC_USER_AGENT`가 비어 있거나 placeholder 값이면 SEC 커넥터는 자동으로 `skip` 처리됩니다.
+- 텔레그램 발송은 timeout과 메시지 분할을 적용합니다.
 
 ### 수동 실행
 
@@ -221,6 +231,7 @@ docker-compose logs -f feedback-server
 ```bash
 uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
 scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400
+sh scripts/check_changed_python_lint.sh --range origin/master..HEAD
 sh scripts/check_context_sync.sh --range origin/master..HEAD
 ```
 
@@ -229,7 +240,7 @@ Git hook:
 - `.githooks/pre-push`
 - `git config core.hooksPath .githooks`
 
-`pre-push`는 커밋 크기, 문맥 동기화, 서비스/E2E 테스트를 함께 검사합니다.
+`pre-push`는 커밋 크기, 변경 Python 파일 기본 린트(F/I), 문맥 동기화, 서비스/E2E 테스트를 함께 검사합니다.
 
 ## 관련 문서
 

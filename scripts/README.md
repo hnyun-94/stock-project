@@ -7,9 +7,10 @@
 | 파일명                    | 용도 |
 | ------------------------- | ---- |
 | `session_bootstrap.sh`    | 세션 시작 시 문서/형상/훅/기준선 테스트를 한 번에 점검 |
-| `run_quality_gate.sh`     | 최종 브랜치 기준 py_compile + 커밋 크기 + 문맥 동기화 + 표준 pytest 게이트 실행 |
+| `run_quality_gate.sh`     | 최종 브랜치 기준 py_compile + 커밋 크기 + 변경 Python 린트 + 문맥 동기화 + 표준 pytest 게이트 실행 |
 | `check_git_hygiene.sh`    | 금지 경로, 절대 경로, 실제 이메일 노출 여부를 검사 |
 | `check_commit_size.sh`    | 커밋당 변경량(추가+삭제) 400줄 제한 검증. 수동 실행은 drift 의심 시 보조용이고, 최종 강제는 `pre-push`에서 수행 |
+| `check_changed_python_lint.sh` | 변경된 Python 파일에 한해 Ruff(F/I) 기본 린트를 실행 |
 | `check_context_sync.sh`   | 코드/문서 동기화 및 런타임 smoke check |
 | `check_review_policy.sh`  | 역할별 리뷰, 근거, 판단이 task/done 문서에 남았는지 검사 |
 | `check_runtime_state.py`  | SQLite 런타임 상태 점검 |
@@ -33,6 +34,7 @@
 ## 권한 정책 요약
 
 - `session_bootstrap.sh`, `run_quality_gate.sh`는 기본적으로 안전한 로컬 검증 명령만 실행합니다.
+- `check_changed_python_lint.sh`는 레거시 전체 lint 도입 전, 변경 파일만 기본 정적 검사로 묶는 점진 게이트입니다.
 - `check_git_hygiene.sh`는 Git에 올라가면 안 되는 로컬 산출물과 민감 패턴을 검사합니다.
 - `check_review_policy.sh`는 구현성 변경이 근거 없는 즉흥 작업으로 끝나지 않았는지 검사합니다.
 - `.env`, 외부 발송, 서버 listen, Notion 스키마 변경, destructive command는 이 번들에 포함하지 않습니다.

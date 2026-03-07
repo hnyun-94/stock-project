@@ -76,6 +76,9 @@ scripts/check_commit_size.sh --range "$RANGE" --max-lines "$MAX_COMMIT_LINES"
 echo "[quality-gate] git hygiene"
 sh scripts/check_git_hygiene.sh
 
+echo "[quality-gate] changed python lint"
+sh scripts/check_changed_python_lint.sh --range "$RANGE"
+
 echo "[quality-gate] context sync"
 sh scripts/check_context_sync.sh --range "$RANGE"
 
