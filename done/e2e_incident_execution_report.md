@@ -1,7 +1,7 @@
 # E2E 장애 검증 작업서 (계획서 기반 실행 결과)
 
 작성일: 2026-03-07  
-참조 계획서: `task/e2e_incident_response_plan.md`
+참조 계획서: `done/e2e_incident_response_plan.md`
 
 ---
 

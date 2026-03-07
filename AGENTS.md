@@ -169,11 +169,11 @@ uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
 더 깊은 문맥이 필요할 경우 파일을 읽어보세요:
 
 - `todo/todo.md`: 현재 우선순위/완료 상태 체크리스트.
-- `task/phase6_task.md`: 최적화 단계 Task 상세 명세.
+- `done/phase6_task.md`: 최적화 단계 Task 상세 명세.
 - `task/task.md`: 일반 개발 Task 명세.
-- `task/e2e_incident_response_plan.md`: E2E 장애 대응 작업계획서.
-- `task/e2e_incident_execution_report.md`: E2E 검증 실행 결과/누락점 체크.
-- `task/github_actions_gemini_404_improvement_plan.md`: GitHub Actions Gemini 404 개선 계획.
-- `task/github_actions_gemini_404_execution_report.md`: 개선 실행 결과 및 검증 기록.
+- `done/e2e_incident_response_plan.md`: E2E 장애 대응 작업계획서.
+- `done/e2e_incident_execution_report.md`: E2E 검증 실행 결과/누락점 체크.
+- `done/github_actions_gemini_404_improvement_plan.md`: GitHub Actions Gemini 404 개선 계획.
+- `done/github_actions_gemini_404_execution_report.md`: 개선 실행 결과 및 검증 기록.
 - `logging/YYYY-MM-DD.md`: 최근 작업 이력.
 - `.agents/skills/`: 에이전트 자동화 스킬(PR 생성, 테스트 자동화 등) 모음.

@@ -6,7 +6,7 @@
 
 # 상세 구현 방법은 requirements/04_phase6_optimization_requirements.md를 참조합니다.
 
-# 실제 진행 Task 명세는 task/phase6_task.md를 참조합니다.
+# 실제 진행 Task 명세는 done/phase6_task.md를 참조합니다.
 
 ---
 
@@ -118,7 +118,7 @@
 ## 🚀 Phase 7 백로그 (2026-03-07 동기화)
 
 상세 실행 계획: `task/next_steps_roadmap.md`
-완료 작업 기준선: `task/completed_work_report.md`
+완료 작업 기준선: `done/completed_work_report.md`
 
 ### P0 - 운영 안정성
 
@@ -136,5 +136,5 @@
 - [ ] 운영 대시보드 문서/점검표(장애 대응 Runbook) 표준화
 
 _작성일: 2026-03-02 | 상세 요구사항: `requirements/04_phase6_optimization_requirements.md` 참조_
-_진행 Task 명세: `task/phase6_task.md` 참조_
+_진행 Task 명세: `done/phase6_task.md` 참조_
 _갱신일: 2026-03-07 | Phase 6 완료 + PR #20~#25 동기화, 103 Tests PASS_
