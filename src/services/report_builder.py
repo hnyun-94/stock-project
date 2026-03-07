@@ -41,6 +41,9 @@ _GLOSSARY = {
     "KOSPI": "한국거래소의 대표 주가지수입니다. 한국 대형주 흐름을 볼 때 가장 많이 씁니다.",
     "KOSDAQ": "기술주와 중소형주 비중이 큰 한국 주가지수입니다. 변동성이 KOSPI보다 큰 편입니다.",
     "AI": "인공지능입니다. 사람의 언어, 이미지, 데이터를 컴퓨터가 학습해 처리하는 기술입니다.",
+    "OpenDART": "금융감독원 전자공시 시스템입니다. 기업의 실적, 자금조달, 지분 변화 공시를 확인할 때 씁니다.",
+    "FRED": "미국 세인트루이스 연은의 경제지표 데이터 서비스입니다. 금리·물가·고용 같은 거시 지표를 볼 때 자주 씁니다.",
+    "SEC": "미국 증권거래위원회입니다. 공시와 상장 기업 데이터를 제공해 미국 시장 보조 지표로 활용할 수 있습니다.",
     "HBM": "고대역폭 메모리입니다. AI 서버에 많이 쓰이는 고성능 메모리로, 메모리 반도체 업황을 볼 때 중요합니다.",
     "GPU": "그래픽처리장치입니다. 지금은 AI 연산용 핵심 칩으로 더 많이 쓰입니다.",
     "파운드리": "반도체를 대신 생산해 주는 사업입니다. 설계만 하는 회사와 구분할 때 자주 씁니다.",
@@ -340,6 +343,22 @@ def _format_rate_text(rate: float) -> str:
     return f"{rate * 100:.0f}%"
 
 
+def _format_metric_value(metric_key: str, value: Optional[float]) -> str:
+    if value is None:
+        return "데이터 부족"
+    if metric_key.endswith("series_value_x100"):
+        return f"{value / 100:.2f}%"
+    return f"{int(round(value))}건"
+
+
+def _format_metric_delta(metric_key: str, value: Optional[float]) -> str:
+    if value is None:
+        return "비교값 부족"
+    if metric_key.endswith("series_value_x100"):
+        return f"{value / 100:+.2f}%p"
+    return f"{int(round(value)):+d}건"
+
+
 def _connector_rollup_label(row: Dict[str, Any]) -> str:
     success_rate = float(row.get("success_rate") or 0.0)
     avg_latency_ms = int(row.get("avg_latency_ms") or 0)
@@ -445,6 +464,209 @@ def _build_data_quality_card(
         for row in list(connector_daily_rollups_7d)[:6]
     ]
     return card
+
+
+def _find_metric_trend(
+    connector_metric_trends_7d: Sequence[Dict[str, Any]],
+    source_id: str,
+    metric_key: str,
+) -> Optional[Dict[str, Any]]:
+    for row in connector_metric_trends_7d:
+        if row.get("source_id") == source_id and row.get("metric_key") == metric_key:
+            return row
+    return None
+
+
+def _build_reliability_badge(
+    *,
+    connector_success_rate_7d: Dict[str, float],
+    connector_daily_rollups_7d: Sequence[Dict[str, Any]],
+    connector_metric_trends_7d: Sequence[Dict[str, Any]],
+    reference_time: Optional[datetime],
+) -> Optional[Dict[str, Any]]:
+    if not connector_success_rate_7d and not connector_daily_rollups_7d:
+        return None
+
+    avg_success = (
+        sum(connector_success_rate_7d.values()) / len(connector_success_rate_7d)
+        if connector_success_rate_7d else 0.0
+    )
+    latest_by_source: Dict[str, Dict[str, Any]] = {}
+    for row in connector_daily_rollups_7d:
+        source_id = str(row.get("source_id") or "")
+        if source_id and source_id not in latest_by_source:
+            latest_by_source[source_id] = row
+
+    caution_sources = sum(1 for row in latest_by_source.values() if _connector_rollup_label(row) == "주의")
+    reference_kst = (reference_time or datetime.now(_KST)).astimezone(_KST)
+    latest_days = [
+        datetime.fromisoformat(str(row.get("day"))).date()
+        for row in connector_daily_rollups_7d
+        if row.get("day")
+    ]
+    latest_days.extend(
+        datetime.fromisoformat(str(row.get("latest_day"))).date()
+        for row in connector_metric_trends_7d
+        if row.get("latest_day")
+    )
+    freshest_day = max(latest_days) if latest_days else reference_kst.date()
+    freshness_gap = max(0, (reference_kst.date() - freshest_day).days)
+
+    score = 40 + int(avg_success * 40)
+    if freshness_gap <= 1:
+        score += 15
+    elif freshness_gap <= 3:
+        score += 8
+    else:
+        score -= 12
+    if connector_metric_trends_7d:
+        score += 5
+    score -= caution_sources * 10
+    score = max(0, min(score, 100))
+
+    if score >= 80:
+        label = "높음"
+    elif score >= 60:
+        label = "보통"
+    else:
+        label = "주의"
+
+    reason = (
+        f"최근 7일 평균 성공률 {avg_success * 100:.0f}%, "
+        f"최신 데이터 {freshness_gap}일 전, "
+        f"주의 source {caution_sources}개"
+    )
+    return {"label": label, "score": score, "reason": reason}
+
+
+def _build_domain_signal_sections(
+    *,
+    connector_metric_trends_7d: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    sections: List[Dict[str, Any]] = []
+
+    earnings = _find_metric_trend(connector_metric_trends_7d, "opendart", "opendart:earnings")
+    financing = _find_metric_trend(connector_metric_trends_7d, "opendart", "opendart:financing")
+    ownership = _find_metric_trend(connector_metric_trends_7d, "opendart", "opendart:ownership")
+    if any([earnings, financing, ownership]):
+        earnings_delta = float((earnings or {}).get("delta_7d") or 0.0)
+        financing_delta = float((financing or {}).get("delta_7d") or 0.0)
+        ownership_delta = float((ownership or {}).get("delta_7d") or 0.0)
+
+        if financing_delta > earnings_delta and financing_delta > 0:
+            summary = "OpenDART 공시는 최근 자금조달 성격이 더 두드러져, 자금 확보 이슈나 희석 우려를 함께 봐야 하는 구간입니다."
+        elif earnings_delta > 0:
+            summary = "OpenDART 공시는 최근 실적·영업 관련 비중이 늘어, 실적 시즌 기대가 조금 더 강해진 흐름으로 읽힙니다."
+        elif ownership_delta > 0:
+            summary = "OpenDART 공시는 최근 지분·최대주주 변화가 늘어, 기업별 지배구조 변수와 수급 이슈를 같이 봐야 합니다."
+        else:
+            summary = "OpenDART 공시는 최근 큰 방향 전환 없이 혼조라, 특정 공시 한두 건보다 누적 흐름을 보는 편이 좋습니다."
+
+        details = []
+        rows = []
+        for label, row in [
+            ("실적/영업", earnings),
+            ("자금조달", financing),
+            ("지분 변화", ownership),
+        ]:
+            if not row:
+                continue
+            details.append(
+                (
+                    f"{label}: 최근 {row['latest_day']} "
+                    f"{_format_metric_value(str(row['metric_key']), row.get('latest_value'))}, "
+                    f"1D {_format_metric_delta(str(row['metric_key']), row.get('delta_1d'))}, "
+                    f"7D {_format_metric_delta(str(row['metric_key']), row.get('delta_7d'))}"
+                )
+            )
+            rows.append(
+                [
+                    label,
+                    _format_metric_value(str(row["metric_key"]), row.get("latest_value")),
+                    _format_metric_delta(str(row["metric_key"]), row.get("delta_1d")),
+                    _format_metric_delta(str(row["metric_key"]), row.get("delta_7d")),
+                ]
+            )
+
+        card = _build_card(
+            summary=summary,
+            details=details,
+            positive_view="실적/영업 공시 비중이 늘면 실적 시즌 기대가 살아 있다는 신호로 해석할 수 있습니다.",
+            neutral_view="공시 건수는 시장 방향을 직접 결정한다기보다, 지금 시장이 어떤 종류의 재료에 반응하는지 보여주는 보조 신호입니다.",
+            negative_view="자금조달 공시가 빠르게 늘면 희석 우려나 현금 압박 이슈가 부각될 수 있어, 같은 테마라도 종목별 체감이 달라질 수 있습니다.",
+            outlook="다음에는 실적 공시 비중이 유지되는지, 아니면 자금조달·지분 이슈로 무게가 이동하는지를 계속 확인하세요.",
+        )
+        card["title"] = "OpenDART 공시 흐름"
+        card["table_headers"] = ["지표", "최근값", "1D 변화", "7D 변화"]
+        card["table_rows"] = rows
+        sections.append(card)
+
+    fred = _find_metric_trend(connector_metric_trends_7d, "fred", "fred:series_value_x100")
+    sec = _find_metric_trend(connector_metric_trends_7d, "sec_edgar", "sec_edgar:registry_count")
+    if any([fred, sec]):
+        fred_delta_7d = float((fred or {}).get("delta_7d") or 0.0)
+        sec_delta_7d = float((sec or {}).get("delta_7d") or 0.0)
+
+        if fred and fred_delta_7d > 0:
+            summary = "FRED 금리 지표가 최근 1주 상승해 성장주와 고밸류 주식에는 부담이 조금 더 커진 흐름입니다."
+        elif fred and fred_delta_7d < 0:
+            summary = "FRED 금리 지표가 최근 1주 완만히 낮아져, 성장주 부담은 다소 완화된 쪽으로 읽을 수 있습니다."
+        elif sec and abs(sec_delta_7d) > 0:
+            summary = "SEC 샘플 지표에 변화가 보여 미국 커버리지 환경을 함께 점검할 필요가 있습니다."
+        else:
+            summary = "FRED/SEC 보조 지표는 최근 큰 변화 없이 유지돼, 거시 압력과 커버리지 환경은 비교적 안정적으로 보입니다."
+
+        details = []
+        rows = []
+        if fred:
+            details.append(
+                (
+                    f"FRED 금리 지표: 최근 {fred['latest_day']} "
+                    f"{_format_metric_value('fred:series_value_x100', fred.get('latest_value'))}, "
+                    f"1D {_format_metric_delta('fred:series_value_x100', fred.get('delta_1d'))}, "
+                    f"7D {_format_metric_delta('fred:series_value_x100', fred.get('delta_7d'))}"
+                )
+            )
+            rows.append(
+                [
+                    "FRED 금리",
+                    _format_metric_value("fred:series_value_x100", fred.get("latest_value")),
+                    _format_metric_delta("fred:series_value_x100", fred.get("delta_1d")),
+                    _format_metric_delta("fred:series_value_x100", fred.get("delta_7d")),
+                ]
+            )
+        if sec:
+            details.append(
+                (
+                    f"SEC 샘플 지표: 최근 {sec['latest_day']} "
+                    f"{_format_metric_value(str(sec['metric_key']), sec.get('latest_value'))}, "
+                    f"1D {_format_metric_delta(str(sec['metric_key']), sec.get('delta_1d'))}, "
+                    f"7D {_format_metric_delta(str(sec['metric_key']), sec.get('delta_7d'))}"
+                )
+            )
+            rows.append(
+                [
+                    "SEC 샘플",
+                    _format_metric_value(str(sec["metric_key"]), sec.get("latest_value")),
+                    _format_metric_delta(str(sec["metric_key"]), sec.get("delta_1d")),
+                    _format_metric_delta(str(sec["metric_key"]), sec.get("delta_7d")),
+                ]
+            )
+
+        card = _build_card(
+            summary=summary,
+            details=details,
+            positive_view="금리 지표가 안정되거나 내려오면 성장주와 AI 테마 해석에는 상대적으로 우호적일 수 있습니다.",
+            neutral_view="FRED/SEC 수치는 매수·매도 신호라기보다, 거시 압력과 데이터 커버리지 환경을 같이 보는 보조 축입니다.",
+            negative_view="금리 지표가 다시 올라가면 같은 실적 뉴스라도 밸류에이션 부담 때문에 주가 반응이 약할 수 있습니다.",
+            outlook="다음 리포트에서는 FRED 금리 흐름이 이어지는지, SEC 샘플 값이 평소 범위를 벗어나는지 같이 보세요.",
+        )
+        card["title"] = "FRED·SEC 시계열"
+        card["table_headers"] = ["지표", "최근값", "1D 변화", "7D 변화"]
+        card["table_rows"] = rows
+        sections.append(card)
+
+    return sections
 
 
 def _build_change_headlines(
@@ -1011,6 +1233,7 @@ def build_report_payload(
     avg_accuracy_30d: float,
     connector_daily_rollups_7d: Optional[Sequence[Dict[str, Any]]] = None,
     recent_connector_failures_7d: Optional[Sequence[Dict[str, Any]]] = None,
+    connector_metric_trends_7d: Optional[Sequence[Dict[str, Any]]] = None,
     reference_time: Optional[datetime] = None,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """리포트 렌더링 payload와 저장용 스냅샷을 생성합니다."""
@@ -1045,6 +1268,12 @@ def build_report_payload(
     payload: Dict[str, Any] = {
         "title": "🌤️ 오늘의 주식 인사이트 리포트",
         "subtitle": "최신 동향과 앞으로의 판단을 쉽게 풀어쓴 5~10분 리포트",
+        "reliability_badge": _build_reliability_badge(
+            connector_success_rate_7d=connector_success_rate_7d,
+            connector_daily_rollups_7d=connector_daily_rollups_7d or [],
+            connector_metric_trends_7d=connector_metric_trends_7d or [],
+            reference_time=reference_time,
+        ),
         "headline_changes": headline_changes,
         "quick_take": _build_quick_take_card(
             market_points=market_points,
@@ -1101,6 +1330,9 @@ def build_report_payload(
         "data_quality_section": _build_data_quality_card(
             connector_daily_rollups_7d=connector_daily_rollups_7d or [],
             recent_connector_failures_7d=recent_connector_failures_7d or [],
+        ),
+        "domain_signal_sections": _build_domain_signal_sections(
+            connector_metric_trends_7d=connector_metric_trends_7d or [],
         ),
         "theme_sections": theme_cards,
         "holding_sections": holding_cards,

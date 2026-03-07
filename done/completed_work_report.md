@@ -20,7 +20,7 @@
 - 상세 체크리스트: `done/phase6_task.md`
 - 통합 요약: `todo/todo.md`
 
-### 최근 구현/정비 완료 항목 (PR #20 ~ #26)
+### 최근 구현/정비 완료 항목 (PR #20 ~ #42)
 
 1. PR #20
 - Git 거버넌스 강제 워크플로우 적용
@@ -45,6 +45,15 @@
 7. PR #26
 - 코드베이스 기준 문서/로그 동기화
 
+8. PR #40
+- 외부 커넥터 1H/24H 운영 알림 + 텔레그램 관리자 경보 + DB 쿨다운
+
+9. PR #41
+- `uv` 명령 권한 위임 정책 반영
+
+10. PR #42
+- 최근 7일 외부 커넥터 일자별 집계 리포트 + 데이터 신뢰도 섹션 추가
+
 ---
 
 ## 3) 코드 기준선 (핵심 모듈)
@@ -67,7 +76,15 @@
 
 - DB/텔레메트리:
   - `src/utils/database.py`
-  - `external_connector_runs` 테이블 및 성공률 조회 API
+  - `external_connector_runs`, `connector_alert_events`, `connector_metric_points`
+  - 성공률/일자별 롤업/metric trend 조회 API
+
+- 운영/리포트:
+  - `src/services/connector_alerts.py`
+  - `src/services/report_builder.py`
+  - `src/utils/report_formatter.py`
+  - `done/operations_runbook.md`
+  - `.github/workflows/pr_quality_gate.yml`
 
 ---
 
@@ -75,7 +92,7 @@
 
 - 테스트 명령:
   - `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q`
-- 최신 기준: **103 passed**
+- 최신 기준: **136 passed**
 
 ---
 
@@ -96,7 +113,5 @@
 - `task/next_steps_roadmap.md`
 
 우선순위:
-1. P0 운영 알림 자동화
-2. P1 텔레메트리 리포트화
-3. P2 도메인 지표 고도화
-4. P3 문서 동기화 자동화
+1. 현재 계획 백로그는 완료
+2. 신규 요구사항은 별도 계획 문서에서 재정의

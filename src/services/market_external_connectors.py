@@ -50,6 +50,23 @@ def _safe_int(value: Any) -> int:
         return 0
 
 
+def _extract_fred_latest_value_x100(payload: Dict[str, Any]) -> Optional[int]:
+    """Extracts the latest numeric FRED observation value and scales it by 100."""
+    observations = payload.get("observations")
+    if not isinstance(observations, list):
+        return None
+
+    for row in observations:
+        raw_value = str((row or {}).get("value", "")).strip()
+        if not raw_value or raw_value == ".":
+            continue
+        try:
+            return int(round(float(raw_value) * 100))
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 async def _fetch_json(
     url: str,
     params: Optional[Dict[str, Any]] = None,
@@ -212,6 +229,7 @@ async def _collect_sec_ticker_count() -> ConnectorResult:
             status="ok",
             count=count,
             detail="sec ticker registry count collected",
+            extra_metrics={"sec_edgar:registry_count": count},
         )
     except Exception as exc:  # pragma: no cover - network branch
         return ConnectorResult("sec_edgar", "error", 0, f"sec request failed: {exc}")
@@ -246,11 +264,16 @@ async def _collect_fred_observation_count() -> ConnectorResult:
             raw = payload.get("observations")
             if isinstance(raw, list):
                 observations = raw
+        extra_metrics = {"fred:observation_count": len(observations)}
+        latest_value_x100 = _extract_fred_latest_value_x100(payload if isinstance(payload, dict) else {})
+        if latest_value_x100 is not None:
+            extra_metrics["fred:series_value_x100"] = latest_value_x100
         return ConnectorResult(
             source_id="fred",
             status="ok",
             count=len(observations),
             detail="fred observation sample collected",
+            extra_metrics=extra_metrics,
         )
     except Exception as exc:  # pragma: no cover - network branch
         return ConnectorResult("fred", "error", 0, f"fred request failed: {exc}")
@@ -332,6 +355,19 @@ def _persist_connector_result(result: ConnectorResult) -> None:
             latency_ms=result.latency_ms,
             detail=result.detail,
         )
+        if result.status == "ok":
+            db.insert_connector_metric_point(
+                source_id=result.source_id,
+                metric_key=f"{result.source_id}:count",
+                metric_value=result.count,
+            )
+            if result.extra_metrics:
+                for metric_key, metric_value in result.extra_metrics.items():
+                    db.insert_connector_metric_point(
+                        source_id=result.source_id,
+                        metric_key=metric_key,
+                        metric_value=metric_value,
+                    )
     except Exception as exc:
         global_logger.warning(
             f"[ExternalConnector] telemetry DB save failed ({result.source_id}): {exc}"

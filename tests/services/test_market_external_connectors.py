@@ -34,6 +34,15 @@ class TestDataGoCountExtraction(unittest.TestCase):
         }
         self.assertEqual(connectors._extract_data_go_count(payload), 3)
 
+    def test_extract_fred_latest_value_x100(self):
+        payload = {
+            "observations": [
+                {"date": "2026-03-07", "value": "4.52"},
+                {"date": "2026-03-06", "value": "4.48"},
+            ]
+        }
+        self.assertEqual(connectors._extract_fred_latest_value_x100(payload), 452)
+
 
 class TestOpenDartCategorization(unittest.TestCase):
     """OpenDART report categorization tests."""
@@ -130,6 +139,32 @@ class TestCollectExternalMetrics(unittest.IsolatedAsyncioTestCase):
             result,
             {"opendart": 4, "opendart:earnings": 2, "opendart:other": 2},
         )
+
+    async def test_collect_fred_extra_metric_includes_series_value(self):
+        async def fred_handler() -> ConnectorResult:
+            return ConnectorResult(
+                "fred",
+                "ok",
+                20,
+                "ok",
+                extra_metrics={"fred:series_value_x100": 455},
+            )
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "EXTERNAL_CONNECTORS_ENABLED": "true",
+                    "EXTERNAL_CONNECTOR_TELEMETRY_DB": "false",
+                },
+                clear=False,
+            ),
+            patch.object(connectors, "_CONNECTOR_HANDLERS", {"fred": fred_handler}),
+        ):
+            result = await connectors.collect_external_source_metrics(active_source_ids=["fred"])
+
+        self.assertEqual(result["fred"], 20)
+        self.assertEqual(result["fred:series_value_x100"], 455)
 
     async def test_collect_resolves_sources_from_environment(self):
         async def opendart_handler() -> ConnectorResult:

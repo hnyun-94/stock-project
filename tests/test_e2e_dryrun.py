@@ -166,6 +166,11 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                 "title": "🌤️ 리포트",
                 "subtitle": "요약",
                 "headline_changes": ["헤드라인 1"],
+                "reliability_badge": {
+                    "label": "높음",
+                    "score": 88,
+                    "reason": "최근 7일 평균 성공률 97%, 최신 데이터 0일 전, 주의 source 0개",
+                },
                 "quick_take": {
                     "summary": "핵심 요약",
                     "details": ["근거 1"],
@@ -196,6 +201,19 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                     "table_headers": ["날짜", "소스", "성공률", "평균 지연", "판단"],
                     "table_rows": [["2026-03-07", "opendart", "100%", "120ms", "안정"]],
                 },
+                "domain_signal_sections": [
+                    {
+                        "title": "OpenDART 공시 흐름",
+                        "summary": "실적 공시 비중이 늘었습니다.",
+                        "details": ["실적 공시 6건"],
+                        "positive_view": "긍정",
+                        "neutral_view": "중립",
+                        "negative_view": "부정",
+                        "outlook": "전망",
+                        "table_headers": ["지표", "최근값", "1D 변화", "7D 변화"],
+                        "table_rows": [["실적/영업", "6건", "+2건", "+4건"]],
+                    }
+                ],
                 "theme_sections": [
                     {
                         "keyword": "AI",
@@ -233,8 +251,10 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         )
 
         self.assertIn("## 🧭 헤드라인 변화", markdown_text)
+        self.assertIn("리포트 신뢰도: 높음", markdown_text)
         self.assertIn("## 📌 오늘 한눈에 보기", markdown_text)
         self.assertIn("## 🛰 데이터 신뢰도", markdown_text)
+        self.assertIn("## 🧪 외부 지표 해석", markdown_text)
         self.assertIn("## 💼 보유 종목별 인사이트", markdown_text)
         self.assertIn("## 🧩 용어 풀이", markdown_text)
         self.assertIn("### 삼성전자", markdown_text)

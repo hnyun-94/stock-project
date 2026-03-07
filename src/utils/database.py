@@ -187,6 +187,21 @@ class Database:
                 ON connector_alert_events(fingerprint);
             CREATE INDEX IF NOT EXISTS idx_connector_alerts_timestamp
                 ON connector_alert_events(timestamp);
+
+            CREATE TABLE IF NOT EXISTS connector_metric_points (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                metric_key TEXT NOT NULL,
+                metric_value REAL NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_connector_metric_points_source
+                ON connector_metric_points(source_id);
+            CREATE INDEX IF NOT EXISTS idx_connector_metric_points_key
+                ON connector_metric_points(metric_key);
+            CREATE INDEX IF NOT EXISTS idx_connector_metric_points_timestamp
+                ON connector_metric_points(timestamp);
         """)
         self._conn.commit()
 
@@ -517,6 +532,112 @@ class Database:
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    def insert_connector_metric_point(
+        self,
+        source_id: str,
+        metric_key: str,
+        metric_value: float,
+        timestamp: Optional[str] = None,
+    ) -> None:
+        """외부 커넥터 스냅샷 메트릭 포인트를 저장합니다."""
+        self._conn.execute(
+            (
+                "INSERT INTO connector_metric_points "
+                "(timestamp, source_id, metric_key, metric_value) "
+                "VALUES (?, ?, ?, ?)"
+            ),
+            (
+                timestamp or datetime.now().isoformat(),
+                source_id,
+                metric_key,
+                float(metric_value),
+            ),
+        )
+        self._conn.commit()
+
+    def get_connector_metric_daily_snapshots(self, days: int = 8) -> List[Dict[str, Any]]:
+        """최근 N일 기준 source/metric/day별 최신 스냅샷을 조회합니다."""
+        since = (datetime.now() - timedelta(days=days)).isoformat()
+        cursor = self._conn.execute(
+            """
+            SELECT
+                points.source_id,
+                points.metric_key,
+                points.metric_value,
+                points.timestamp,
+                latest.day AS day
+            FROM connector_metric_points AS points
+            INNER JOIN (
+                SELECT
+                    source_id,
+                    metric_key,
+                    substr(timestamp, 1, 10) AS day,
+                    MAX(timestamp) AS latest_timestamp
+                FROM connector_metric_points
+                WHERE timestamp >= ?
+                GROUP BY source_id, metric_key, day
+            ) AS latest
+            ON points.source_id = latest.source_id
+            AND points.metric_key = latest.metric_key
+            AND points.timestamp = latest.latest_timestamp
+            ORDER BY latest.day DESC, points.source_id ASC, points.metric_key ASC
+            """,
+            (since,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_connector_metric_trends(self, days: int = 8) -> List[Dict[str, Any]]:
+        """최근 N일 metric snapshot을 바탕으로 1D/7D 변화율을 계산합니다."""
+        snapshots = self.get_connector_metric_daily_snapshots(days=days)
+        grouped: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
+        for row in snapshots:
+            grouped.setdefault((row["source_id"], row["metric_key"]), []).append(row)
+
+        trends: List[Dict[str, Any]] = []
+        for (source_id, metric_key), rows in grouped.items():
+            ordered_rows = sorted(rows, key=lambda item: item["day"], reverse=True)
+            latest = ordered_rows[0]
+            latest_day = datetime.fromisoformat(str(latest["day"])).date()
+            previous_1d = ordered_rows[1] if len(ordered_rows) > 1 else None
+            previous_7d = None
+            for candidate in ordered_rows[1:]:
+                candidate_day = datetime.fromisoformat(str(candidate["day"])).date()
+                if (latest_day - candidate_day).days >= 5:
+                    previous_7d = candidate
+                    break
+
+            latest_value = float(latest["metric_value"] or 0.0)
+            prev_1d_value = round(float(previous_1d["metric_value"]), 4) if previous_1d else None
+            prev_7d_value = round(float(previous_7d["metric_value"]), 4) if previous_7d else None
+            latest_value = round(latest_value, 4)
+
+            def _delta(current: float, base: Optional[float]) -> Optional[float]:
+                if base is None:
+                    return None
+                return round(current - base, 4)
+
+            def _pct(current: float, base: Optional[float]) -> Optional[float]:
+                if base in (None, 0):
+                    return None
+                return round((current - base) / base, 4)
+
+            trends.append(
+                {
+                    "source_id": source_id,
+                    "metric_key": metric_key,
+                    "latest_day": latest["day"],
+                    "latest_value": latest_value,
+                    "prev_1d_value": prev_1d_value,
+                    "prev_7d_value": prev_7d_value,
+                    "delta_1d": _delta(latest_value, prev_1d_value),
+                    "delta_7d": _delta(latest_value, prev_7d_value),
+                    "pct_change_1d": _pct(latest_value, prev_1d_value),
+                    "pct_change_7d": _pct(latest_value, prev_7d_value),
+                }
+            )
+
+        return sorted(trends, key=lambda item: (item["source_id"], item["metric_key"]))
+
     def insert_connector_alert_event(
         self,
         source_id: str,
@@ -627,6 +748,7 @@ class Database:
             "report_snapshots",
             "external_connector_runs",
             "connector_alert_events",
+            "connector_metric_points",
             "prompt_usage_log",
         ]
         counts: Dict[str, int] = {}
