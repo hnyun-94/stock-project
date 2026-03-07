@@ -1325,6 +1325,156 @@ def _build_long_term_card(
     )
 
 
+def _build_decision_tiles(
+    *,
+    market_regime: str,
+    focus_keywords: Sequence[str],
+    holding_actions: Dict[str, str],
+    quick_take: Dict[str, Any],
+    reliability_badge: Optional[Dict[str, Any]],
+) -> List[Dict[str, str]]:
+    tiles = [
+        {
+            "label": "시장 톤",
+            "value": market_regime,
+            "detail": quick_take.get("summary", ""),
+        },
+        {
+            "label": "먼저 볼 테마",
+            "value": ", ".join(focus_keywords[:2]) or "핵심 테마 관찰",
+            "detail": "반복 등장한 테마가 실제 수급과 연결되는지 확인합니다.",
+        },
+        {
+            "label": "보유 종목",
+            "value": ", ".join(
+                f"{holding} {action}"
+                for holding, action in list(holding_actions.items())[:2]
+            )
+            or "보유 종목 관찰",
+            "detail": "종목별 공통 해석보다 각 종목 체크포인트를 따로 봅니다.",
+        },
+        {
+            "label": "지금 체크포인트",
+            "value": ", ".join(quick_take.get("watch_points", [])[:2]) or "수급, 환율",
+            "detail": (
+                f"현재 리포트 신뢰도는 {reliability_badge.get('label', '보통')}입니다."
+                if reliability_badge
+                else "다음 실행에서 데이터 신뢰도를 함께 확인합니다."
+            ),
+        },
+    ]
+    return tiles
+
+
+def _build_market_scoreboard(
+    *,
+    market_indices: Sequence[MarketIndex],
+    market_regime: str,
+    sentiment_score: int,
+    focus_keywords: Sequence[str],
+    datalab_trends: Sequence[SearchTrend],
+) -> Dict[str, Any]:
+    rows: List[List[str]] = []
+    for item in list(market_indices)[:2]:
+        rows.append(
+            [
+                item.name,
+                item.value or "수치 없음",
+                _truncate_text(item.investor_summary or "수급 방향 확인 필요", 72),
+            ]
+        )
+
+    rows.append(
+        [
+            "시장 심리",
+            f"{sentiment_score:+d} / {market_regime}",
+            "숫자와 장세 톤을 같이 보며 과도한 낙관·비관을 피합니다.",
+        ]
+    )
+
+    if focus_keywords:
+        rows.append(
+            [
+                "우선 테마",
+                ", ".join(focus_keywords[:2]),
+                "반복 등장 테마가 후속 뉴스와 수급으로 이어지는지 확인합니다.",
+            ]
+        )
+
+    if datalab_trends:
+        top_trend = datalab_trends[0]
+        rows.append(
+            [
+                "검색 관심",
+                _truncate_text(f"{top_trend.keyword} {top_trend.traffic or 'N/A'}", 40),
+                "실제 매수세로 이어지는지 함께 보지 않으면 과열 해석이 될 수 있습니다.",
+            ]
+        )
+
+    return {
+        "headers": ["항목", "현재 값", "읽는 법"],
+        "rows": rows[:5],
+    }
+
+
+def _build_insight_lenses(
+    *,
+    quick_take: Dict[str, Any],
+    daily_window: Dict[str, Any],
+    recent_window: Dict[str, Any],
+    session_issue_section: Optional[Dict[str, Any]],
+    theme_cards: Sequence[Dict[str, Any]],
+    holding_cards: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    first_theme = theme_cards[0] if theme_cards else {}
+    first_holding = holding_cards[0] if holding_cards else {}
+    event_source = session_issue_section or recent_window
+
+    flow_details = list(daily_window.get("details", [])[:2])
+    if first_theme.get("keyword"):
+        flow_details.append(f"우선 테마: {first_theme['keyword']}")
+    if first_holding.get("holding"):
+        flow_details.append(
+            f"대표 종목: {first_holding['holding']} {first_holding.get('stance', '관찰')}"
+        )
+
+    return [
+        {
+            "title": "매크로",
+            "summary": quick_take.get("summary", ""),
+            "details": quick_take.get("details", [])[:2],
+            "why_it_matters": quick_take.get("why_it_matters", ""),
+            "watch_points": quick_take.get("watch_points", [])[:2],
+            "positive_view": quick_take.get("positive_view", ""),
+            "neutral_view": quick_take.get("neutral_view", ""),
+            "negative_view": quick_take.get("negative_view", ""),
+        },
+        {
+            "title": "실적·수급",
+            "summary": (
+                f"오늘은 누가 사고 있는지와 {first_theme.get('keyword', '핵심 테마')}가 "
+                "실제 종목으로 번지는지가 중요합니다."
+            ),
+            "details": _clean_text_items(flow_details, limit=3),
+            "why_it_matters": daily_window.get("why_it_matters", ""),
+            "watch_points": daily_window.get("watch_points", [])[:2],
+            "positive_view": daily_window.get("positive_view", ""),
+            "neutral_view": daily_window.get("neutral_view", ""),
+            "negative_view": daily_window.get("negative_view", ""),
+        },
+        {
+            "title": "이벤트",
+            "summary": event_source.get("summary", ""),
+            "details": event_source.get("details", [])[:2],
+            "why_it_matters": event_source.get("why_it_matters", ""),
+            "watch_points": event_source.get("watch_points", [])[:2],
+            "positive_view": event_source.get("positive_view", ""),
+            "neutral_view": event_source.get("neutral_view", ""),
+            "negative_view": event_source.get("negative_view", ""),
+        },
+    ]
+
+
 def _build_glossary(report_payload: Dict[str, Any]) -> List[Dict[str, str]]:
     serialized = json.dumps(report_payload, ensure_ascii=False).lower()
     items: List[Dict[str, str]] = []
@@ -1391,47 +1541,74 @@ def build_report_payload(
 
     weekly_focus = _recurring_focus_keywords(weekly_snapshots)
     monthly_focus = _recurring_focus_keywords(monthly_snapshots)
+    reliability_badge = _build_reliability_badge(
+        connector_success_rate_7d=connector_success_rate_7d,
+        connector_daily_rollups_7d=connector_daily_rollups_7d or [],
+        connector_metric_trends_7d=connector_metric_trends_7d or [],
+        reference_time=reference_time,
+    )
+    quick_take = _build_quick_take_card(
+        market_points=market_points,
+        market_indices=market_indices,
+        focus_keywords=focus_keywords,
+        sentiment_score=sentiment_score,
+        market_regime=market_regime,
+    )
+    recent_window = _build_recent_window_card(
+        market_news=market_news,
+        datalab_trends=datalab_trends,
+    )
+    daily_window = _build_daily_window_card(
+        market_indices=market_indices,
+        market_points=market_points,
+        sentiment_score=sentiment_score,
+    )
+    session_issue_section = _build_session_issue_card(
+        reference_time=reference_time,
+        market_news=market_news,
+        community_posts=community_posts,
+        datalab_trends=datalab_trends,
+    )
 
     payload: Dict[str, Any] = {
         "title": "🌤️ 오늘의 주식 인사이트 리포트",
         "subtitle": "최신 동향과 앞으로의 판단을 쉽게 풀어쓴 5~10분 리포트",
-        "reliability_badge": _build_reliability_badge(
-            connector_success_rate_7d=connector_success_rate_7d,
-            connector_daily_rollups_7d=connector_daily_rollups_7d or [],
-            connector_metric_trends_7d=connector_metric_trends_7d or [],
-            reference_time=reference_time,
-        ),
-        "headline_changes": headline_changes,
-        "quick_take": _build_quick_take_card(
-            market_points=market_points,
-            market_indices=market_indices,
-            focus_keywords=focus_keywords,
-            sentiment_score=sentiment_score,
+        "reliability_badge": reliability_badge,
+        "decision_tiles": _build_decision_tiles(
             market_regime=market_regime,
+            focus_keywords=focus_keywords,
+            holding_actions=holding_actions,
+            quick_take=quick_take,
+            reliability_badge=reliability_badge,
         ),
-        "session_issue_section": _build_session_issue_card(
-            reference_time=reference_time,
-            market_news=market_news,
-            community_posts=community_posts,
+        "market_scoreboard": _build_market_scoreboard(
+            market_indices=market_indices,
+            market_regime=market_regime,
+            sentiment_score=sentiment_score,
+            focus_keywords=focus_keywords,
             datalab_trends=datalab_trends,
         ),
+        "headline_changes": headline_changes,
+        "quick_take": quick_take,
+        "insight_lenses": _build_insight_lenses(
+            quick_take=quick_take,
+            daily_window=daily_window,
+            recent_window=recent_window,
+            session_issue_section=session_issue_section,
+            theme_cards=theme_cards,
+            holding_cards=holding_cards,
+        ),
+        "session_issue_section": session_issue_section,
         "time_windows": [
             {
                 "label": "1H",
                 "title": "최근 동향",
-                **_build_recent_window_card(
-                    market_news=market_news,
-                    datalab_trends=datalab_trends,
-                ),
+                **recent_window,
             },
             {
                 "label": "1D",
                 "title": "오늘 장 판단",
-                **_build_daily_window_card(
-                    market_indices=market_indices,
-                    market_points=market_points,
-                    sentiment_score=sentiment_score,
-                ),
+                **daily_window,
             },
             {
                 "label": "1W",

@@ -97,6 +97,157 @@ def _append_card(
     lines.append("")
 
 
+def _append_markdown_table(
+    lines: list[str],
+    *,
+    headers: list[str],
+    rows: list[list[str]],
+) -> None:
+    if not headers or not rows:
+        return
+    lines.append("| " + " | ".join(headers) + " |")
+    lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+    for row in rows:
+        lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
+    lines.append("")
+
+
+def _append_three_view_table(lines: list[str], card: dict) -> None:
+    rows = [[
+        card.get("positive_view", "-") or "-",
+        card.get("neutral_view", "-") or "-",
+        card.get("negative_view", "-") or "-",
+    ]]
+    _append_markdown_table(
+        lines,
+        headers=["긍정 시각", "중립 시각", "부정 시각"],
+        rows=rows,
+    )
+
+
+def _append_compact_brief(
+    lines: list[str],
+    *,
+    heading: str,
+    card: dict,
+    stance_label: str = "기본 판단",
+) -> None:
+    lines.append(f"### {heading}")
+    lines.append("")
+
+    stance = card.get("stance")
+    if stance:
+        lines.append(f"**{stance_label}:** {stance}")
+        lines.append("")
+
+    summary = card.get("summary")
+    if summary:
+        lines.append(f"> {summary}")
+        lines.append("")
+
+    details = card.get("details", [])
+    if details:
+        lines.append(f"- 핵심 근거: {' / '.join(details[:2])}")
+    if card.get("why_it_matters"):
+        lines.append(f"- 왜 중요한가: {card['why_it_matters']}")
+    if card.get("watch_points"):
+        lines.append(f"- 지금 볼 것: {', '.join(card['watch_points'][:3])}")
+    if card.get("outlook"):
+        lines.append(f"- 다음 체크포인트: {card['outlook']}")
+    if card.get("action"):
+        lines.append(f"- 실행 아이디어: {card['action']}")
+    lines.append("")
+
+    _append_three_view_table(lines, card)
+
+
+def _append_decision_section(lines: list[str], report_payload: dict) -> None:
+    lines.extend(["## 📍 지금 결론", ""])
+
+    headline_changes = report_payload.get("headline_changes", [])
+    if headline_changes:
+        lines.extend(["### 헤드라인 변화", ""])
+        for item in headline_changes:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    quick_take = report_payload.get("quick_take")
+    if quick_take:
+        lines.append(f"> 한줄 결론: {quick_take.get('summary', '')}")
+        lines.append("")
+
+    decision_tiles = report_payload.get("decision_tiles", [])
+    if decision_tiles:
+        lines.extend(["### 빠르게 보는 판단표", ""])
+        _append_markdown_table(
+            lines,
+            headers=["구분", "내용", "왜 보나"],
+            rows=[
+                [
+                    tile.get("label", ""),
+                    tile.get("value", ""),
+                    tile.get("detail", ""),
+                ]
+                for tile in decision_tiles
+            ],
+        )
+
+    scoreboard = report_payload.get("market_scoreboard")
+    if scoreboard:
+        lines.extend(["### 오늘 바로 볼 숫자", ""])
+        _append_markdown_table(
+            lines,
+            headers=scoreboard.get("headers", []),
+            rows=scoreboard.get("rows", []),
+        )
+
+
+def _append_lens_section(lines: list[str], insight_lenses: list[dict]) -> None:
+    if not insight_lenses:
+        return
+
+    lines.extend(["## 🧱 오늘 판단을 만드는 세 가지 축", ""])
+    for lens in insight_lenses:
+        lines.append(f"### {lens.get('title', '판단 축')}")
+        lines.append("")
+        if lens.get("summary"):
+            lines.append(f"> {lens['summary']}")
+            lines.append("")
+        if lens.get("details"):
+            lines.append(f"- 핵심 근거: {' / '.join(lens['details'][:2])}")
+        if lens.get("why_it_matters"):
+            lines.append(f"- 왜 중요한가: {lens['why_it_matters']}")
+        if lens.get("watch_points"):
+            lines.append(f"- 지금 볼 것: {', '.join(lens['watch_points'][:3])}")
+        lines.append("")
+        _append_three_view_table(lines, lens)
+
+
+def _append_time_window_digest(lines: list[str], time_windows: list[dict], session_issue_section: dict | None) -> None:
+    if not time_windows:
+        return
+
+    lines.extend(["## 🕒 시간대 압축판", ""])
+    _append_markdown_table(
+        lines,
+        headers=["구간", "한줄 판단", "지금 볼 것"],
+        rows=[
+            [
+                f"{window.get('label', '')} {window.get('title', '')}".strip(),
+                window.get("summary", ""),
+                ", ".join(window.get("watch_points", [])[:2]) or "후속 수급 확인",
+            ]
+            for window in time_windows
+        ],
+    )
+
+    if session_issue_section:
+        lines.append(
+            f"> 지금 구간 공통 이슈: {session_issue_section.get('summary', '')}"
+        )
+        lines.append("")
+
+
 def build_structured_markdown_report(report_payload: dict) -> str:
     """구조화된 payload를 읽기 쉬운 Markdown 리포트로 렌더링합니다."""
     lines = [report_payload.get("title", "🌤️ 오늘의 주식 인사이트 리포트"), ""]
@@ -117,77 +268,68 @@ def build_structured_markdown_report(report_payload: dict) -> str:
             ]
         )
 
-    headline_changes = report_payload.get("headline_changes", [])
-    if headline_changes:
-        lines.extend(["## 🧭 헤드라인 변화", ""])
-        for item in headline_changes:
-            lines.append(f"- {item}")
-        lines.append("")
-
-    quick_take = report_payload.get("quick_take")
-    if quick_take:
-        lines.extend(["## 📌 오늘 한눈에 보기", ""])
-        _append_card(lines, heading="지금의 핵심 판단", card=quick_take)
-
-    session_issue_section = report_payload.get("session_issue_section")
-    if session_issue_section:
-        lines.extend(["## 🔔 공통 이슈 브리핑", ""])
-        _append_card(
-            lines,
-            heading=session_issue_section.get("title", "공통 이슈"),
-            card=session_issue_section,
-            outlook_label="지금 구간에서 볼 것",
-        )
-
-    time_windows = report_payload.get("time_windows", [])
-    if time_windows:
-        lines.extend(["## 🕒 타임 윈도우별 판단", ""])
-        for window in time_windows:
-            _append_card(
-                lines,
-                heading=f"{window.get('label', '')} | {window.get('title', '')}",
-                card=window,
-            )
-
-    data_quality_section = report_payload.get("data_quality_section")
-    if data_quality_section:
-        lines.extend(["## 🛰 데이터 신뢰도", ""])
-        _append_card(
-            lines,
-            heading="최근 7일 외부 데이터 품질",
-            card=data_quality_section,
-        )
-
-    domain_signal_sections = report_payload.get("domain_signal_sections", [])
-    if domain_signal_sections:
-        lines.extend(["## 🧪 외부 지표 해석", ""])
-        for section in domain_signal_sections:
-            _append_card(
-                lines,
-                heading=section.get("title", "외부 지표"),
-                card=section,
-            )
+    _append_decision_section(lines, report_payload)
+    _append_lens_section(lines, report_payload.get("insight_lenses", []))
+    _append_time_window_digest(
+        lines,
+        report_payload.get("time_windows", []),
+        report_payload.get("session_issue_section"),
+    )
 
     theme_sections = report_payload.get("theme_sections", [])
     if theme_sections:
         lines.extend(["## 🎯 관심 테마", ""])
         for section in theme_sections:
-            _append_card(lines, heading=section.get("keyword", "테마"), card=section)
+            _append_compact_brief(
+                lines,
+                heading=section.get("keyword", "테마"),
+                card=section,
+                stance_label="현재 톤",
+            )
 
     holding_sections = report_payload.get("holding_sections", [])
     if holding_sections:
         lines.extend(["## 💼 보유 종목별 인사이트", ""])
         for section in holding_sections:
-            _append_card(
+            _append_compact_brief(
                 lines,
                 heading=section.get("holding", "종목"),
                 card=section,
             )
 
+    domain_signal_sections = report_payload.get("domain_signal_sections", [])
+    if domain_signal_sections:
+        lines.extend(["## 🧪 보조 지표 해석", ""])
+        for section in domain_signal_sections:
+            _append_compact_brief(
+                lines,
+                heading=section.get("title", "외부 지표"),
+                card=section,
+                stance_label="해석 포인트",
+            )
+            headers = section.get("table_headers") or []
+            rows = section.get("table_rows") or []
+            if headers and rows:
+                _append_markdown_table(lines, headers=headers, rows=rows)
+
     long_term_section = report_payload.get("long_term_section")
     if long_term_section:
         lines.extend(["## 🗺️ 장기 플랜", ""])
-        _append_card(lines, heading="중장기 판단", card=long_term_section)
+        _append_compact_brief(lines, heading="중장기 판단", card=long_term_section)
+
+    data_quality_section = report_payload.get("data_quality_section")
+    if data_quality_section:
+        lines.extend(["## 🛰 데이터 신뢰도", ""])
+        _append_compact_brief(
+            lines,
+            heading="최근 7일 외부 데이터 품질",
+            card=data_quality_section,
+            stance_label="운영 해석",
+        )
+        headers = data_quality_section.get("table_headers") or []
+        rows = data_quality_section.get("table_rows") or []
+        if headers and rows:
+            _append_markdown_table(lines, headers=headers, rows=rows)
 
     glossary = report_payload.get("glossary", [])
     if glossary:
@@ -212,18 +354,31 @@ def markdown_to_html(markdown_str: str) -> str:
     <head>
     <meta charset="utf-8">
     <style>
-        body {{ font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', Dotum, sans-serif; line-height: 1.6; color: #333; }}
-        h1 {{ color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 5px; font-size: 20px; }}
-        h2 {{ color: #202124; background-color: #f1f3f4; padding: 5px 10px; border-radius: 4px; font-size: 18px; }}
-        h3 {{ color: #2c3e50; font-size: 16px; }}
-        p {{ margin-bottom: 15px; font-size: 15px; }}
-        a {{ color: #1a73e8; text-decoration: none; }}
+        body {{ margin: 0; background: #f6f1e8; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', Dotum, sans-serif; line-height: 1.68; color: #2b241d; }}
+        .report-wrap {{ max-width: 860px; margin: 0 auto; padding: 24px 18px 40px; }}
+        .report-card {{ background: #fffdfa; border: 1px solid #e7dccd; border-radius: 18px; padding: 28px 24px; box-shadow: 0 8px 24px rgba(62, 45, 18, 0.06); }}
+        h1 {{ color: #6a4f2b; border-bottom: 2px solid #ddc7a4; padding-bottom: 8px; margin: 0 0 16px; font-size: 24px; }}
+        h2 {{ color: #3b2f24; background: #f2eadb; padding: 9px 12px; border-radius: 10px; font-size: 18px; margin-top: 26px; }}
+        h3 {{ color: #5b4630; font-size: 16px; margin-top: 18px; margin-bottom: 10px; }}
+        p, li {{ font-size: 14px; }}
+        ul {{ padding-left: 20px; }}
+        blockquote {{ margin: 14px 0; padding: 12px 14px; background: #fbf6ea; border-left: 4px solid #d7a94b; color: #58452e; border-radius: 8px; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 12px 0 16px; table-layout: fixed; }}
+        th {{ background: #efe4d2; color: #4f3f2f; font-weight: 700; font-size: 13px; padding: 10px 8px; border: 1px solid #e3d5bf; text-align: left; }}
+        td {{ background: #fffdfa; font-size: 13px; padding: 10px 8px; border: 1px solid #eadfcd; vertical-align: top; word-break: keep-all; }}
+        tr:nth-child(even) td {{ background: #fcf8f1; }}
+        strong {{ color: #3f3124; }}
+        hr {{ border: 0; border-top: 1px solid #e7dccd; margin: 28px 0 18px; }}
+        a {{ color: #8a5b22; text-decoration: none; }}
         a:hover {{ text-decoration: underline; }}
+        em {{ color: #6f6253; }}
     </style>
     </head>
     <body>
-        <div style="max-width: 800px; margin: 0 auto; padding: 20px;">
-            {html_body}
+        <div class="report-wrap">
+            <div class="report-card">
+                {html_body}
+            </div>
         </div>
     </body>
     </html>
