@@ -97,6 +97,25 @@ _MARKET_WEAK_SIGNAL_KEYWORDS = (
     "중동", "전쟁", "안전자산", "유가", "경기", "고용",
 )
 
+_HIGH_SIGNAL_KEYWORDS = (
+    "실적", "수주", "계약", "발주", "환율", "금리", "관세", "가이던스",
+    "매출", "영업이익", "CAPEX", "공급", "HBM", "GPU", "데이터센터",
+    "메모리", "공시", "순매수", "순매도", "출하", "규제", "고용", "유가",
+)
+
+_LOW_VALUE_SIGNAL_KEYWORDS = (
+    "채용", "성과급", "총파업", "파업", "주총", "행동주의", "연봉",
+    "행사", "포럼", "인터뷰", "복지", "브랜드", "마케팅",
+)
+
+_POLISH_REPLACEMENTS = {
+    "필요없는": "필요 없는",
+    "인공지능반도체": "인공지능 반도체",
+    "환율 부담가": "환율 부담이",
+    "기대 선반영가": "기대 선반영이",
+    "지정학 변수가": "지정학 변수가",
+}
+
 _HOLDING_WATCHPOINTS = {
     "삼성전자": ["HBM 납품 확대", "파운드리 수율", "대형 고객사 CAPEX"],
     "SK하이닉스": ["HBM ASP", "메모리 가격", "주요 고객사 발주"],
@@ -107,6 +126,34 @@ _HOLDING_WHY_IT_MATTERS = {
     "삼성전자": "삼성전자는 메모리와 파운드리를 함께 보는 종목이라, HBM 확장과 첨단 공정 안정화가 동시에 확인돼야 재평가 폭이 커집니다.",
     "SK하이닉스": "SK하이닉스는 AI 서버용 메모리 수요의 직접 수혜주라, HBM 가격과 고객사 발주 변화가 실적 기대에 바로 연결되기 쉽습니다.",
     "엔비디아": "엔비디아는 AI 투자 사이클의 중심축이라, 데이터센터 투자와 GPU 출하 흐름이 꺾이는지가 가장 중요한 판단 포인트입니다.",
+}
+
+_LEARNING_TOPIC_LIBRARY = {
+    "환율": {
+        "definition": "환율은 원화와 달러 같은 통화의 교환 비율입니다.",
+        "why_today": "오늘 리포트에서 환율은 외국인 수급과 시장 불안 심리를 함께 해석하는 기준으로 중요했습니다.",
+        "how_to_read": "보통 원/달러 환율이 빠르게 오르면 시장이 불안을 더 크게 느낀다고 해석하는 경우가 많습니다.",
+    },
+    "수급": {
+        "definition": "수급은 개인, 외국인, 기관 중 누가 더 많이 사고파는지의 흐름입니다.",
+        "why_today": "오늘 리포트에서는 지수 숫자보다 누가 시장을 지지하고 있는지가 더 중요한 판단 포인트였습니다.",
+        "how_to_read": "보통 외국인과 기관이 같은 방향으로 순매수하면 단기 해석의 신뢰도가 조금 더 높아집니다.",
+    },
+    "금리": {
+        "definition": "금리는 돈의 가격으로, 높아지면 성장주에 부담이 되고 낮아지면 미래 기대주에 우호적일 수 있습니다.",
+        "why_today": "오늘 리포트에서 금리는 환율과 함께 시장 스타일이 공격형인지 방어형인지 판단하는 배경 변수입니다.",
+        "how_to_read": "보통 금리 기대가 올라가면 비싸게 평가된 성장주는 흔들리고, 낮아지면 다시 선호를 받을 수 있습니다.",
+    },
+    "HBM": {
+        "definition": "HBM은 AI 서버에 많이 쓰이는 고성능 메모리입니다.",
+        "why_today": "오늘 리포트에서는 AI 반도체와 메모리 수요를 읽는 핵심 축으로 반복 등장했습니다.",
+        "how_to_read": "보통 HBM 가격과 고객사 발주가 같이 좋아지면 메모리 관련 종목 기대도 함께 커집니다.",
+    },
+    "AI": {
+        "definition": "AI는 데이터를 학습해 문장, 이미지, 예측을 처리하는 인공지능 기술입니다.",
+        "why_today": "오늘 리포트에서 AI는 시장 전체의 성장 기대와 반도체 투자 흐름을 설명하는 중심 테마였습니다.",
+        "how_to_read": "보통 AI 뉴스는 단순 화제보다 실제 고객사 투자, 데이터센터 수요, 실적 연결 여부가 더 중요합니다.",
+    },
 }
 
 
@@ -122,8 +169,22 @@ def _clean_markdown_line(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+def _polish_signal_text(text: str) -> str:
+    polished = str(text or "")
+    for source, target in _POLISH_REPLACEMENTS.items():
+        polished = polished.replace(source, target)
+    polished = re.sub(
+        r"(?<=[가-힣])(?=(삼성전자|SK하이닉스|엔비디아|채용|총파업|반도체|인공지능|금리|환율))",
+        " ",
+        polished,
+    )
+    polished = re.sub(r"(?<=[A-Za-z0-9])(?=[가-힣])", " ", polished)
+    polished = re.sub(r"(?<=[가-힣])(?=[A-Za-z0-9])", " ", polished)
+    return polished
+
+
 def _normalize_signal_text(text: str) -> str:
-    cleaned = _clean_markdown_line(text or "")
+    cleaned = _clean_markdown_line(_polish_signal_text(text or ""))
     for fragment in _PORTAL_NOISE_FRAGMENTS:
         cleaned = cleaned.replace(fragment, " ")
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,:;|-")
@@ -317,9 +378,14 @@ def _signal_news_items(news_items: Iterable[NewsArticle], limit: int = 3) -> Lis
             continue
         if summary and _is_low_signal_text(summary):
             summary = ""
-        relevance_score = sum(2 for keyword in _MARKET_SIGNAL_KEYWORDS if keyword in f"{title} {summary}")
-        relevance_score += sum(1 for keyword in _MARKET_WEAK_SIGNAL_KEYWORDS if keyword in f"{title} {summary}")
-        relevance_score -= sum(3 for fragment in _LOW_SIGNAL_FRAGMENTS if fragment in f"{title} {summary}")
+        joined_text = f"{title} {summary}"
+        relevance_score = sum(2 for keyword in _MARKET_SIGNAL_KEYWORDS if keyword in joined_text)
+        relevance_score += sum(1 for keyword in _MARKET_WEAK_SIGNAL_KEYWORDS if keyword in joined_text)
+        relevance_score += sum(3 for keyword in _HIGH_SIGNAL_KEYWORDS if keyword in joined_text)
+        relevance_score -= sum(2 for keyword in _LOW_VALUE_SIGNAL_KEYWORDS if keyword in joined_text)
+        relevance_score -= sum(3 for fragment in _LOW_SIGNAL_FRAGMENTS if fragment in joined_text)
+        if summary:
+            relevance_score += 1
         scored_items.append(
             (
                 relevance_score,
@@ -460,8 +526,14 @@ def _build_context_views(subject: str, joined_context: str) -> tuple[str, str, s
     monitor_points = _describe_monitor_points(joined_context)
     risk_factor = _describe_risk_factor(joined_context)
     positive_view = f"{monitor_points}가 같이 좋아지면 상방 해석이 쉬워집니다."
-    neutral_view = f"{why_it_matters} 그래서 지금은 후속 숫자 확인이 먼저입니다."
-    negative_view = f"{topic_subject} {risk_factor}가 커지거나 {monitor_points}가 약하면 보수적으로 봐야 합니다."
+    if subject in {"시장", "오늘 장", "최근 동향", "국장 개장 전 공통 이슈", "국장 마감 직후 공통 이슈", "미장 개장 전 공통 이슈", "미장 마감 직후 공통 이슈"}:
+        neutral_view = "지금은 한 방향으로 베팅하기보다 수급·환율·거시 지표가 같은 쪽으로 모이는지 확인하는 편이 좋습니다."
+    else:
+        neutral_view = f"{why_it_matters} 그래서 지금은 후속 숫자 확인이 먼저입니다."
+    negative_view = (
+        f"{topic_subject} {_attach_particle(risk_factor, '이', '가')} 커지거나 "
+        f"{_attach_particle(monitor_points, '이', '가')} 약하면 보수적으로 봐야 합니다."
+    )
     outlook = f"다음 체크포인트는 {monitor_points}입니다."
     return positive_view, neutral_view, negative_view, outlook
 
@@ -737,6 +809,66 @@ def _build_reliability_badge(
         f"주의 source {caution_sources}개"
     )
     return {"label": label, "score": score, "reason": reason}
+
+
+def _infer_market_style(
+    *,
+    market_regime: str,
+    focus_keywords: Sequence[str],
+    market_points: Sequence[str],
+) -> str:
+    joined_context = " ".join(list(focus_keywords) + list(market_points))
+    if market_regime in {"방어적", "관망"} or _contains_any(joined_context, ("환율", "금리", "불확실", "경계")):
+        return "방어형"
+    if _contains_any(joined_context, ("AI", "인공지능", "반도체", "HBM", "GPU")):
+        return "성장형"
+    if _contains_any(joined_context, ("실적", "수주", "계약", "공시")):
+        return "실적형"
+    return "혼조형"
+
+
+def _build_learning_card(
+    *,
+    market_points: Sequence[str],
+    focus_keywords: Sequence[str],
+    holding_cards: Sequence[Dict[str, Any]],
+) -> Dict[str, str]:
+    serialized_parts = list(market_points) + list(focus_keywords)
+    serialized_parts.extend(card.get("summary", "") for card in holding_cards[:2])
+    serialized = " ".join(serialized_parts)
+
+    term_signals = {
+        "AI": ("AI", "인공지능", "GPU"),
+        "HBM": ("HBM", "고대역폭 메모리"),
+        "환율": ("환율", "원/달러", "달러"),
+        "금리": ("금리", "국채", "채권"),
+        "수급": ("수급", "외국인", "기관", "개인"),
+    }
+    priority_order = ("AI", "HBM", "환율", "금리", "수급")
+
+    normalized_focus = " ".join(focus_keywords)
+    normalized_holdings = " ".join(card.get("summary", "") for card in holding_cards[:2])
+
+    selected_term = "수급"
+    for term in priority_order:
+        signals = term_signals[term]
+        if _contains_any(normalized_focus, signals):
+            selected_term = term
+            break
+        if _contains_any(normalized_holdings, signals):
+            selected_term = term
+            break
+        if _contains_any(serialized, signals):
+            selected_term = term
+            break
+
+    topic = _LEARNING_TOPIC_LIBRARY[selected_term]
+    return {
+        "term": selected_term,
+        "summary": topic["definition"],
+        "why_today": topic["why_today"],
+        "how_to_read": topic["how_to_read"],
+    }
 
 
 def _build_domain_signal_sections(
@@ -1554,6 +1686,8 @@ def _build_market_scoreboard(
 
 def _build_insight_lenses(
     *,
+    market_regime: str,
+    market_points: Sequence[str],
     quick_take: Dict[str, Any],
     daily_window: Dict[str, Any],
     recent_window: Dict[str, Any],
@@ -1564,6 +1698,11 @@ def _build_insight_lenses(
     first_theme = theme_cards[0] if theme_cards else {}
     first_holding = holding_cards[0] if holding_cards else {}
     event_source = session_issue_section or recent_window
+    market_style = _infer_market_style(
+        market_regime=market_regime,
+        focus_keywords=[card.get("keyword", "") for card in theme_cards[:2]],
+        market_points=market_points,
+    )
 
     flow_details = list(daily_window.get("details", [])[:2])
     if first_theme.get("keyword"):
@@ -1575,20 +1714,31 @@ def _build_insight_lenses(
 
     return [
         {
-            "title": "매크로",
-            "summary": quick_take.get("summary", ""),
-            "details": quick_take.get("details", [])[:2],
-            "why_it_matters": quick_take.get("why_it_matters", ""),
+            "title": "경제 온도",
+            "summary": (
+                f"지금 경제 환경은 {quick_take.get('details', ['수급 개선 기대'])[0].replace('버팀목: ', '')}와 "
+                f"{_describe_risk_factor(' '.join(market_points))}가 함께 있는 {market_style} 구간으로 보는 편이 자연스럽습니다."
+            ),
+            "details": _clean_text_items(
+                [
+                    f"현재 시장 스타일: {market_style}",
+                    f"시장 톤: {market_regime}",
+                    *(quick_take.get("details", [])[:2]),
+                ],
+                limit=3,
+            ),
+            "why_it_matters": "경제 환경은 지금 어떤 종목군이 유리한지와, 같은 뉴스에 시장이 얼마나 민감하게 반응할지를 정하는 배경입니다.",
             "watch_points": quick_take.get("watch_points", [])[:2],
             "positive_view": quick_take.get("positive_view", ""),
             "neutral_view": quick_take.get("neutral_view", ""),
             "negative_view": quick_take.get("negative_view", ""),
+            "related_links": quick_take.get("related_links", [])[:2],
         },
         {
-            "title": "실적·수급",
+            "title": "자금 흐름",
             "summary": (
                 f"오늘은 누가 사고 있는지와 {first_theme.get('keyword', '핵심 테마')}가 "
-                "실제 종목으로 번지는지가 중요합니다."
+                "실제 종목 수익률로 번지는지를 같이 보는 편이 좋습니다."
             ),
             "details": _clean_text_items(flow_details, limit=3),
             "why_it_matters": daily_window.get("why_it_matters", ""),
@@ -1596,9 +1746,10 @@ def _build_insight_lenses(
             "positive_view": daily_window.get("positive_view", ""),
             "neutral_view": daily_window.get("neutral_view", ""),
             "negative_view": daily_window.get("negative_view", ""),
+            "related_links": daily_window.get("related_links", [])[:2],
         },
         {
-            "title": "이벤트",
+            "title": "시장 화제",
             "summary": event_source.get("summary", ""),
             "details": event_source.get("details", [])[:2],
             "why_it_matters": event_source.get("why_it_matters", ""),
@@ -1606,6 +1757,7 @@ def _build_insight_lenses(
             "positive_view": event_source.get("positive_view", ""),
             "neutral_view": event_source.get("neutral_view", ""),
             "negative_view": event_source.get("negative_view", ""),
+            "related_links": event_source.get("related_links", [])[:2],
         },
     ]
 
@@ -1728,6 +1880,8 @@ def build_report_payload(
         "headline_changes": headline_changes,
         "quick_take": quick_take,
         "insight_lenses": _build_insight_lenses(
+            market_regime=market_regime,
+            market_points=market_points,
             quick_take=quick_take,
             daily_window=daily_window,
             recent_window=recent_window,
@@ -1782,6 +1936,11 @@ def build_report_payload(
             avg_accuracy_30d=avg_accuracy_30d,
             avg_feedback_score_30d=avg_feedback_score_30d,
             connector_success_rate_30d=connector_success_rate_30d,
+        ),
+        "learning_card": _build_learning_card(
+            market_points=market_points,
+            focus_keywords=focus_keywords,
+            holding_cards=holding_cards,
         ),
         "footer_note": "본 리포트는 자동화된 AI 및 스크래핑 시스템에 의해 수집/편집되었습니다.",
     }
