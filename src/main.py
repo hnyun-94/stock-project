@@ -45,6 +45,7 @@ from src.services.market_source_governance import (
 from src.services.market_external_connectors import (
     collect_external_source_snapshot,
 )
+from src.services.connector_alerts import dispatch_connector_health_alerts
 from src.services.report_builder import build_report_payload
 from src.services.topic_news import collect_topic_news
 from src.utils.report_formatter import build_structured_markdown_report
@@ -204,11 +205,26 @@ async def run_pipeline() -> None:
         )
 
         # 외부 무료 소스 커넥터 지표 수집 + 텔레메트리 (옵션)
-        _, _ = (
-            await collect_external_source_snapshot()
-        )
-
         db = get_db()
+        _, connector_telemetry = await collect_external_source_snapshot()
+        if connector_telemetry:
+            try:
+                alert_decisions = await asyncio.to_thread(
+                    dispatch_connector_health_alerts,
+                    db,
+                )
+                if alert_decisions:
+                    sent_count = sum(1 for item in alert_decisions if item.sent_chat_ids)
+                    cooldown_count = sum(1 for item in alert_decisions if item.skipped_by_cooldown)
+                    global_logger.info(
+                        "[ConnectorAlerts] evaluated=%s sent=%s cooldown=%s",
+                        len(alert_decisions),
+                        sent_count,
+                        cooldown_count,
+                    )
+            except Exception as exc:
+                global_logger.warning(f"[ConnectorAlerts] 운영 알림 평가 실패: {exc}")
+
         connector_success_rate_7d = db.get_connector_success_rate(days=7)
         connector_success_rate_30d = db.get_connector_success_rate(days=30)
         avg_feedback_score_30d = db.get_average_score(days=30)

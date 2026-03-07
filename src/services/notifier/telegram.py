@@ -19,28 +19,17 @@ class TelegramSender(NotificationSender):
     """
 
     def send(self, user: User, subject: str, content: str) -> bool:
-        """
-        역할 (Role):
-            Telegram Bot API를 호출하여 대상 사용자의 텔레그램 채팅방으로 텍스트 기반의 알림을 전송합니다.
-            `user` 객체에서 텔레그램 ID를 확인하고, 환경 변수에서 봇 토큰을 가져와 메시지를 구성하여 전송합니다.
-            전송 성공 여부를 boolean 값으로 반환합니다.
-
-        입력 (Input):
-            user (User): 알림을 수신할 대상 사용자 객체입니다. `user.telegram_id` 속성이 필수로 요구됩니다.
-                         예: User(id=1, name="김철수", email="kim@example.com", telegram_id="1234567890")
-            subject (str): 텔레그램 메시지의 제목 부분에 표시될 문자열입니다. 메시지 본문과 결합되어 전송됩니다.
-                           예: "긴급 공지", "오늘의 뉴스 브리핑"
-            content (str): 텔레그램 메시지의 본문 텍스트입니다. 제목과 함께 사용자에게 전달됩니다.
-                           예: "주식 시장에 중요한 변동이 예상됩니다. 자세한 내용은 첨부 문서를 확인하세요."
-
-        반환값 (Output / Returns):
-            bool: 메시지 전송 요청이 성공적으로 처리되고 HTTP 200 응답을 받은 경우 True를 반환합니다.
-                  사용자 ID 누락, 봇 토큰 미설정, API 호출 실패 (비200 응답), 네트워크 오류 등
-                  어떤 이유로든 발송에 실패하면 False를 반환합니다.
-                  예: True (성공), False (실패)
-        """
+        """User 객체의 telegram_id로 메시지를 전송합니다."""
         if not user.telegram_id:
             global_logger.info(f"[TelegramSender] {user.name}님의 텔레그램 ID가 설정되어 있지 않습니다.")
+            return False
+
+        return self.send_to_chat_id(user.telegram_id, subject, content)
+
+    def send_to_chat_id(self, chat_id: str, subject: str, content: str) -> bool:
+        """운영 알림처럼 raw chat_id만 있을 때 텔레그램 메시지를 전송합니다."""
+        if not chat_id:
+            global_logger.info("[TelegramSender] chat_id가 비어 있어 텔레그램 발송을 건너뜁니다.")
             return False
 
         bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -54,11 +43,11 @@ class TelegramSender(NotificationSender):
         # 텔레그램 발송 시엔 텍스트 길이나 마크다운 문제 최소화를 위해 기본 Markdown 속성을 사용합니다.
         
         # 텔레그램 메시지는 제목+본문을 하나의 텍스트로 결합
-        message = f"📢 *{subject}*\n\n{content}"
+        message = f"📢 {subject}\n\n{content}"
         
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         payload = {
-            "chat_id": user.telegram_id,
+            "chat_id": chat_id,
             "text": message,
             "parse_mode": "HTML"  # AI_Summarizer의 출력을 HTML로 포맷팅해서 보내도 됩니다. 
                                   # 하지만 여기선 간단히 전송 시 에러를 막기위해 None 혹은 명확한 텍스트로 보냅니다.
@@ -70,11 +59,11 @@ class TelegramSender(NotificationSender):
         try:
             response = requests.post(url, json=payload)
             if response.status_code == 200:
-                global_logger.info(f"[TelegramSender] 텔레그램 발송 완료: {user.telegram_id}")
+                global_logger.info(f"[TelegramSender] 텔레그램 발송 완료: {chat_id}")
                 return True
             else:
-                global_logger.info(f"[TelegramSender] 텔레그램 발송 실패 ({user.telegram_id}): HTTP {response.status_code} - {response.text}")
+                global_logger.info(f"[TelegramSender] 텔레그램 발송 실패 ({chat_id}): HTTP {response.status_code} - {response.text}")
                 return False
         except Exception as e:
-            global_logger.info(f"[TelegramSender] 요청 중 예외 발생 ({user.telegram_id}): {e}")
+            global_logger.info(f"[TelegramSender] 요청 중 예외 발생 ({chat_id}): {e}")
             return False
