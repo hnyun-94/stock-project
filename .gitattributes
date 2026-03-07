@@ -1,0 +1,4 @@
+.local/** -diff
+logging/** -diff
+errorCase/** -diff
+errorcase/** -diff

@@ -85,7 +85,7 @@
 - 상세 Task 원본: `done/phase6_task.md`
 - 병렬 실행/역할 검증: `done/parallel_role_priority_execution_plan.md`
 - 다음 작업 계획: `task/next_steps_roadmap.md`
-- 당일 실행 로그: `logging/2026-03-07.md`
+- 당일 상세 실행 로그는 로컬 `logging/`에 두고, 공유 기준선은 본 문서와 관련 `task/` 문서로 추적합니다.
 
 ---
 

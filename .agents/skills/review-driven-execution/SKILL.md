@@ -23,7 +23,7 @@ description: "Use when the user asks for PM/TPM/기획자/개발자/신입개발
 1. 관련 문서를 읽습니다.
    - `AGENTS.md`
    - `todo/todo.md`
-   - 최신 `logging/YYYY-MM-DD.md`
+   - 최신 로컬 `logging/YYYY-MM-DD.md`
    - 작업과 직접 연관된 `task/*.md`, `done/*.md`
 2. 요구사항을 역할별로 검토합니다.
    - PM: 사용자 가치, 범위, 우선순위
@@ -43,14 +43,14 @@ description: "Use when the user asks for PM/TPM/기획자/개발자/신입개발
    - 공통 파일 충돌이 큰 스트림은 마지막에 합칩니다.
    - 테스트/문서/운영 경로는 가능한 한 먼저 마련합니다.
 5. 중간 결과를 남깁니다.
-   - 구현이 시작되면 `logging/YYYY-MM-DD.md`에 작업 내용/검증 결과를 기록합니다.
-   - 다음 세션이 이어받을 수 있을 정도로 "무엇을 했고 무엇이 남았는지"를 적습니다.
+   - 구현이 시작되면 로컬 `logging/YYYY-MM-DD.md`에 작업 내용/검증 결과를 기록합니다.
+   - Git에 남겨야 할 내용은 `task/` 또는 `done/` 문서에 정제해서 남깁니다.
 6. 구현 후 품질 게이트와 Git 전달 절차를 완료합니다.
 
 ## Default Outputs
 
 - 계획서: `task/*.md`
-- 작업 로그: `logging/YYYY-MM-DD.md`
+- 작업 로그: 로컬 `logging/YYYY-MM-DD.md`
 - 필요 시 후속 백로그: 관련 `task/*.md`
 
 ## Guardrails

@@ -1,5 +1,8 @@
 # Environments
 .env
+.env.*
+.envrc
+!.env.template
 .venv/
 env/
 venv/
@@ -24,10 +27,18 @@ htmlcov/
 
 # Logs and Data
 logging/
+errorCase/
 errorcase/
 *.log
+data/
+*.db
+*.db-shm
+*.db-wal
 prediction_snapshots.json
+user_feedback.json
+ai_predictions.json
 
 # Ruff / Linters
 .ruff_cache/
 .tmp/
+.local/

@@ -28,7 +28,7 @@
   - 404 판별 helper 테스트 추가
 
 6. 장애 기록/분석
-- `errorCase/2026-03-06_github_actions_gemini_model_404.md` 작성
+- 로컬 `errorCase/2026-03-06_github_actions_gemini_model_404.md`에 원문 기록 후, 본 문서에 정제 결과 반영
 
 ## 2) 검증 결과
 
