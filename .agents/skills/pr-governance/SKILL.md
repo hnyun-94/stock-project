@@ -20,6 +20,9 @@ description: "Enforce feature-sliced PR workflow: commit size <=400 lines, multi
 
 1. 기능 단위로 PR을 분리합니다.
 2. 각 커밋의 변경량(추가+삭제)은 최대 400줄을 넘기지 않습니다.
+   - 이 한도는 계획서 단계에서 미리 커밋 예산으로 쪼갭니다.
+   - 실제 목표치는 `300~350줄 내외`로 잡아 여유를 둡니다.
+   - 수동 `check_commit_size` 실행은 기본 필수가 아니며, 예산 초과가 의심될 때만 사용합니다.
 3. PR 본문에는 아래 6개 관점 리뷰를 모두 포함합니다.
    - PM
    - TPM
@@ -34,13 +37,17 @@ description: "Enforce feature-sliced PR workflow: commit size <=400 lines, multi
 
 ## Mandatory Sequence
 
-1. 구현 완료
-2. 품질 게이트 + 커밋 크기 검증
-3. 기능 단위 커밋
-4. 원격 push
-5. PR 생성
-6. 다중 관점 리뷰 및 이슈 처리
-7. 머지 + 브랜치 정리
+1. 구현 전 계획서에 커밋 예산을 적습니다.
+2. 구현 완료
+3. 품질 게이트 실행
+4. 기능 단위 커밋
+   - 계획서의 커밋 예산 기준으로 나눕니다.
+   - 범위 drift가 크면 수동 커밋 크기 검증을 추가합니다.
+5. 원격 push
+   - `pre-push`가 커밋 크기 정책을 자동 검증합니다.
+6. PR 생성
+7. 다중 관점 리뷰 및 이슈 처리
+8. 머지 + 브랜치 정리
 
 위 순서를 따르지 않으면 작업 완료로 간주하지 않습니다.
 
@@ -102,7 +109,7 @@ description: "Enforce feature-sliced PR workflow: commit size <=400 lines, multi
 
 ## Commands
 
-커밋 크기 검증:
+수동 커밋 크기 검증이 필요할 때만:
 
 ```bash
 scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400

@@ -44,8 +44,11 @@ description: "Use when the user asks for PM/TPM/기획자/개발자/신입개발
    - 근거
    - 종합 판단
    - 병렬 스트림
-   - 구현 범위 / 후속 범위
-   - 수용 기준
+   - 커밋 예산
+     - 각 스트림/커밋 후보별 예상 변경 줄수
+     - 목표치: 보통 300~350줄 내외
+    - 구현 범위 / 후속 범위
+    - 수용 기준
 5. 구현 전 병렬 스트림을 확정합니다.
    - 공통 파일 충돌이 큰 스트림은 마지막에 합칩니다.
    - 테스트/문서/운영 경로는 가능한 한 먼저 마련합니다.
@@ -53,6 +56,9 @@ description: "Use when the user asks for PM/TPM/기획자/개발자/신입개발
    - 구현이 시작되면 로컬 `logging/YYYY-MM-DD.md`에 작업 내용/검증 결과를 기록합니다.
    - Git에 남겨야 할 내용은 `task/` 또는 `done/` 문서에 정제해서 남깁니다.
 7. 구현 후 품질 게이트와 Git 전달 절차를 완료합니다.
+   - 커밋 분할은 계획서의 커밋 예산을 기준으로 합니다.
+   - 수동 `check_commit_size`는 drift 의심 시에만 사용합니다.
+   - 최종 강제 검증은 `pre-push`와 `run_quality_gate.sh`가 담당합니다.
 
 ## Default Outputs
 
