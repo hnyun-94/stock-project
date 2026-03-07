@@ -69,6 +69,9 @@ _quota_block_state: Dict[str, Any] = {
     "reason": "",
 }
 _quota_block_seconds = int(os.getenv("GEMINI_QUOTA_BLOCK_SECONDS", "300"))
+_quota_retry_total_timeout_seconds = float(
+    os.getenv("GEMINI_QUOTA_RETRY_TOTAL_TIMEOUT_SECONDS", "60")
+)
 _quota_state_key = "gemini_quota_block"
 _persisted_quota_loaded = False
 _run_budget_state: Dict[str, int] = {
@@ -319,6 +322,87 @@ def _maybe_raise_quota_exhausted(error: Exception) -> None:
         daily_quota=_is_daily_quota_error(error),
     )
     raise GeminiQuotaExhaustedError(reason) from error
+
+
+def _quota_retry_delay_allowed(*, retry_delay_seconds: int, call_started_at: float) -> bool:
+    """quota retryDelay를 실제로 기다릴지 결정합니다."""
+    if retry_delay_seconds <= 0:
+        return False
+    elapsed = max(0.0, time.monotonic() - call_started_at)
+    remaining_budget = max(0.0, _quota_retry_total_timeout_seconds - elapsed)
+    return retry_delay_seconds <= remaining_budget
+
+
+async def _generate_content_with_quota_retry(
+    *,
+    client: Any,
+    model: str,
+    prompt: str,
+    config_kwargs: Dict[str, Any],
+    call_type: str,
+    call_started_at: float,
+) -> Any:
+    """quota retryDelay가 짧을 때만 한 번 대기 후 재시도합니다."""
+    try:
+        return await _generate_content_with_model(
+            client,
+            model,
+            prompt,
+            config_kwargs,
+        )
+    except Exception as error:
+        if _is_model_not_found_error(error):
+            raise
+
+        reason = _build_quota_reason(error)
+        if reason:
+            retry_delay = _parse_retry_delay_seconds(_extract_error_payload(error))
+            if _quota_retry_delay_allowed(
+                retry_delay_seconds=retry_delay,
+                call_started_at=call_started_at,
+            ):
+                global_logger.warning(
+                    (
+                        f"[GeminiQuota] retryDelay {retry_delay}s 감지. "
+                        f"{call_type} 호출은 해당 시간 대기 후 1회 재시도합니다."
+                    )
+                )
+                await asyncio.sleep(retry_delay)
+                try:
+                    response = await _generate_content_with_model(
+                        client,
+                        model,
+                        prompt,
+                        config_kwargs,
+                    )
+                    global_logger.info(
+                        f"[GeminiQuota] retryDelay 기반 재시도 성공: {call_type}"
+                    )
+                    return response
+                except Exception as retry_error:
+                    global_logger.error(
+                        "❌ [Gemini] retryDelay 대기 후 재시도도 실패: "
+                        f"{retry_error.__class__.__name__}: {retry_error}"
+                    )
+                    _maybe_raise_quota_exhausted(retry_error)
+                    raise
+
+            if retry_delay > 0:
+                elapsed = max(0.0, time.monotonic() - call_started_at)
+                remaining_budget = max(0.0, _quota_retry_total_timeout_seconds - elapsed)
+                global_logger.warning(
+                    (
+                        f"[GeminiQuota] retryDelay {retry_delay}s 이지만 "
+                        f"남은 대기 예산 {remaining_budget:.1f}s를 초과해 "
+                        "로컬 fallback으로 전환합니다."
+                    )
+                )
+
+        global_logger.error(
+            f"❌ [Gemini] API 호출 실패: {error.__class__.__name__}: {error}"
+        )
+        _maybe_raise_quota_exhausted(error)
+        raise
 
 
 def _summarize_titles(news_items: List[NewsArticle], limit: int = 2) -> str:
@@ -616,6 +700,7 @@ async def safe_gemini_call(
     """재시도, 모델 fallback, timeout, JSON mode를 포함한 공용 Gemini 호출 래퍼입니다."""
     _raise_if_quota_blocked()
     _reserve_run_budget_slot(call_type)
+    call_started_at = time.monotonic()
     client = _get_client()
     selected_model = _normalize_model_name(model) or _default_requested_model()
     async with _gemini_sema:
@@ -635,11 +720,13 @@ async def safe_gemini_call(
             available_models = await _get_available_models(force_refresh=False)
             selected_model = _pick_runtime_model(model, available_models)
 
-            response = await _generate_content_with_model(
-                client,
-                selected_model,
-                prompt,
-                config_kwargs,
+            response = await _generate_content_with_quota_retry(
+                client=client,
+                model=selected_model,
+                prompt=prompt,
+                config_kwargs=config_kwargs,
+                call_type=call_type,
+                call_started_at=call_started_at,
             )
         except asyncio.TimeoutError:
             global_logger.error("⏰ [Gemini] API 호출 90초 타임아웃")
@@ -662,18 +749,15 @@ async def safe_gemini_call(
                         f"[Gemini] 모델 대체 적용: {selected_model} -> {fallback_model}"
                     )
                     try:
-                        response = await _generate_content_with_model(
-                            client,
-                            fallback_model,
-                            prompt,
-                            config_kwargs,
+                        response = await _generate_content_with_quota_retry(
+                            client=client,
+                            model=fallback_model,
+                            prompt=prompt,
+                            config_kwargs=config_kwargs,
+                            call_type=call_type,
+                            call_started_at=call_started_at,
                         )
-                    except Exception as fallback_error:
-                        global_logger.error(
-                            f"❌ [Gemini] 대체 모델 호출 실패: "
-                            f"{fallback_error.__class__.__name__}: {fallback_error}"
-                        )
-                        _maybe_raise_quota_exhausted(fallback_error)
+                    except Exception:
                         raise
                 else:
                     raise PermanentGeminiError(
@@ -681,10 +765,6 @@ async def safe_gemini_call(
                         "GEMINI_MODEL/GEMINI_MODEL_CANDIDATES 설정을 확인하세요."
                     ) from e
             else:
-                global_logger.error(
-                    f"❌ [Gemini] API 호출 실패: {e.__class__.__name__}: {e}"
-                )
-                _maybe_raise_quota_exhausted(e)
                 raise
 
         await asyncio.sleep(2)  # 분당 요청수 추가 방어
