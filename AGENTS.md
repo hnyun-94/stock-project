@@ -93,6 +93,32 @@
 - 작업 도중 중단될 수 있는 변경은 로컬 `logging/YYYY-MM-DD.md`에 중간 결과를 남기되, Git으로 공유가 필요한 내용은 `task/`, `done/`, `README.md`, `AGENTS.md` 같은 정제 문서로 승격합니다.
 - GitHub Actions, SQLite, 캐시, workflow, env 기반 상태 저장이 엮인 변경은 항상 **런타임 아키텍처 검토 + health-check**까지 포함합니다.
 - 같은 요구가 반복되면 ad-hoc 대응으로 끝내지 말고 `AGENTS.md`, `.agents/skills/`, `.githooks/`, `scripts/`로 승격하여 재사용 가능하게 만듭니다.
+### Completion Context Policy
+
+- 이 프로젝트는 **작업 종료 후 context 보존 여부를 판단적으로 결정**합니다.
+- 작업 종료 시에는 아래 순서로 **Completion Context Triage**를 수행합니다.
+  - 남아 있는 큐를 확인합니다.
+    - 현재 사용자의 미해결 요청
+    - 이번 변경과 직접 이어지는 `todo/`, `task/`, `done/` 후속 항목
+    - 미처리 오류/장애, 미머지 PR, dirty worktree, 실패한 검증
+  - 다음 세 가지를 다양한 관점에서 판단합니다.
+    - context를 유지하는 것이 바로 다음 작업 품질에 유리한가
+    - 필요한 정보가 이미 정제 문서(`task/`, `done/`, `README.md`, `AGENTS.md`)에 남아 있는가
+    - 긴 raw context를 계속 들고 가면 오히려 노이즈나 overflow를 키우는가
+  - 후속 작업이 없거나 유지 이점이 작으면 context를 사실상 초기화하고, 정제 문서만 기준선으로 삼습니다.
+  - 후속 작업이 있으면 필요한 부분만 남깁니다.
+    - 현재 상태
+    - 핵심 변경 파일
+    - 검증 결과
+    - 잔여 리스크
+    - 다음 액션
+  - 긴 로그, 중복 설명, 이미 문서화된 상세 내역은 압축하거나 버립니다.
+  - 이 규칙은 context 최적화에 실제 도움이 될 때만 적용합니다. 기계적으로 유지/압축/초기화를 강제하지 않습니다.
+- hook이나 스크립트로 강제하지 않는 이유는 다음과 같습니다.
+  - context 가치 판단은 작업 성격과 직후 사용자 의도에 따라 달라집니다.
+  - deterministic rule로 강제하면 불필요한 문서화와 오탐이 늘어날 수 있습니다.
+  - context 최적화는 raw 기록 보존보다, 필요한 정보만 정제 문서로 승격하는 편이 더 안정적입니다.
+- 따라서 이 정책은 `AGENTS.md`와 관련 skill에서 운영 규칙으로 유지하고, `pre-push` 같은 자동 검증에는 올리지 않습니다.
 
 ### Evidence-Based Review Policy
 
