@@ -8,21 +8,25 @@ Codex reading guide:
 3. 나머지 helper는 모델 선택, 프롬프트 제약, JSON 파싱/fallback을 담당합니다.
 """
 
-import os
-import json
 import asyncio
-import time
+import json
+import os
 import re
-from typing import Dict, Any, List, Optional, Set
+import time
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Set
+from zoneinfo import ZoneInfo
+
 from google import genai
 from google.genai.errors import ClientError
-from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from src.models import MarketIndex, NewsArticle, CommunityPost, SearchTrend
-from src.utils.logger import global_logger
-from src.utils.circuit_breaker import async_circuit_breaker
+from src.models import CommunityPost, MarketIndex, NewsArticle, SearchTrend
 from src.services.prompt_manager import get_cached_prompt
-from src.services.prompt_tuner import get_tuning_adjustments, apply_tuning_to_prompt
+from src.services.prompt_tuner import apply_tuning_to_prompt, get_tuning_adjustments
+from src.utils.circuit_breaker import async_circuit_breaker
+from src.utils.database import get_db
+from src.utils.logger import global_logger
 
 # Section A: model discovery and runtime selection helpers
 
@@ -56,11 +60,22 @@ class GeminiQuotaExhaustedError(PermanentGeminiError):
     """Gemini quota 고갈로 로컬 fallback 전환이 필요한 오류."""
 
 
+class GeminiBudgetExceededError(PermanentGeminiError):
+    """이번 런의 Gemini 예산을 넘겨 로컬 fallback이 필요한 오류."""
+
+
 _quota_block_state: Dict[str, Any] = {
     "blocked_until": 0.0,
     "reason": "",
 }
 _quota_block_seconds = int(os.getenv("GEMINI_QUOTA_BLOCK_SECONDS", "300"))
+_quota_state_key = "gemini_quota_block"
+_persisted_quota_loaded = False
+_run_budget_state: Dict[str, int] = {
+    "budget": 0,
+    "used": 0,
+}
+_KST = ZoneInfo("Asia/Seoul")
 
 _positive_keywords = (
     "상승", "반등", "실적", "수주", "강세", "기대", "확대", "증가",
@@ -76,6 +91,102 @@ def _reset_gemini_runtime_state() -> None:
     """테스트/새 런 시작 시 quota block 상태를 초기화합니다."""
     _quota_block_state["blocked_until"] = 0.0
     _quota_block_state["reason"] = ""
+    _run_budget_state["budget"] = 0
+    _run_budget_state["used"] = 0
+    global _persisted_quota_loaded
+    _persisted_quota_loaded = False
+
+
+def _read_positive_int_env(env_key: str, default_value: int) -> int:
+    raw = os.getenv(env_key, "").strip()
+    if not raw:
+        return default_value
+    try:
+        parsed = int(raw)
+        return parsed if parsed > 0 else default_value
+    except ValueError:
+        return default_value
+
+
+def _derive_run_budget() -> int:
+    explicit_budget = _read_positive_int_env("GEMINI_MAX_REMOTE_CALLS_PER_RUN", 0)
+    if explicit_budget > 0:
+        return explicit_budget
+
+    daily_budget = _read_positive_int_env("GEMINI_DAILY_REQUEST_BUDGET", 16)
+    run_interval_hours = _read_positive_int_env("PIPELINE_RUN_INTERVAL_HOURS", 3)
+    runs_per_day = max(1, (24 + run_interval_hours - 1) // run_interval_hours)
+    return max(1, daily_budget // runs_per_day)
+
+
+def _next_kst_day_reset_timestamp() -> float:
+    now = datetime.now(_KST)
+    reset_at = datetime.combine(
+        now.date() + timedelta(days=1),
+        datetime.min.time(),
+        tzinfo=_KST,
+    ) + timedelta(minutes=10)
+    return reset_at.timestamp()
+
+
+def _persist_quota_state() -> None:
+    try:
+        blocked_until = float(_quota_block_state.get("blocked_until", 0.0) or 0.0)
+        if blocked_until <= time.time():
+            get_db().delete_runtime_state(_quota_state_key)
+            return
+        payload = {
+            "blocked_until": datetime.fromtimestamp(blocked_until, tz=_KST).isoformat(),
+            "reason": _quota_block_state.get("reason") or "",
+        }
+        get_db().set_runtime_state(_quota_state_key, json.dumps(payload, ensure_ascii=False))
+    except Exception as exc:
+        global_logger.warning(f"[GeminiQuota] quota 상태 영속화 실패: {exc}")
+
+
+def _load_persisted_quota_state() -> None:
+    global _persisted_quota_loaded
+    if _persisted_quota_loaded:
+        return
+    _persisted_quota_loaded = True
+    try:
+        raw_value = get_db().get_runtime_state(_quota_state_key)
+        if not raw_value:
+            return
+        payload = json.loads(raw_value)
+        blocked_until_text = str(payload.get("blocked_until") or "").strip()
+        blocked_until = (
+            datetime.fromisoformat(blocked_until_text).timestamp()
+            if blocked_until_text
+            else 0.0
+        )
+        if blocked_until <= time.time():
+            get_db().delete_runtime_state(_quota_state_key)
+            return
+        _quota_block_state["blocked_until"] = max(
+            float(_quota_block_state.get("blocked_until", 0.0) or 0.0),
+            blocked_until,
+        )
+        _quota_block_state["reason"] = str(payload.get("reason") or "Gemini quota exhausted")
+    except Exception as exc:
+        global_logger.warning(f"[GeminiQuota] 영속 quota 상태 로드 실패: {exc}")
+
+
+def prepare_ai_run() -> None:
+    """파이프라인 한 런 시작 시 예산과 quota 상태를 준비합니다."""
+    _run_budget_state["budget"] = _derive_run_budget()
+    _run_budget_state["used"] = 0
+    _load_persisted_quota_state()
+
+
+def _reserve_run_budget_slot(call_type: str) -> None:
+    budget = int(_run_budget_state.get("budget") or 0)
+    used = int(_run_budget_state.get("used") or 0)
+    if budget > 0 and used >= budget:
+        raise GeminiBudgetExceededError(
+            f"Gemini run budget exhausted ({used}/{budget}) for {call_type}"
+        )
+    _run_budget_state["used"] = used + 1
 
 
 def _compact_text(text: str, limit: int = 100) -> str:
@@ -152,20 +263,45 @@ def _build_quota_reason(error: Exception) -> Optional[str]:
     return reason
 
 
-def _mark_quota_block(reason: str, retry_delay_seconds: int = 0) -> None:
+def _is_daily_quota_error(error: Exception) -> bool:
+    payload = _extract_error_payload(error)
+    for detail in payload.get("error", {}).get("details", []):
+        for violation in detail.get("violations", []):
+            quota_id = str(violation.get("quotaId") or "")
+            if "perday" in quota_id.lower():
+                return True
+    return False
+
+
+def _mark_quota_block(
+    reason: str,
+    retry_delay_seconds: int = 0,
+    *,
+    daily_quota: bool = False,
+) -> None:
     block_seconds = max(_quota_block_seconds, retry_delay_seconds)
     blocked_until = time.time() + block_seconds
+    if daily_quota:
+        blocked_until = max(blocked_until, _next_kst_day_reset_timestamp())
     if blocked_until > _quota_block_state["blocked_until"]:
         _quota_block_state["blocked_until"] = blocked_until
     _quota_block_state["reason"] = reason
+    _persist_quota_state()
     global_logger.warning(
-        f"[GeminiQuota] quota 고갈 감지. 약 {block_seconds}s 동안 로컬 fallback 모드로 전환합니다. reason={reason}"
+        (
+            f"[GeminiQuota] quota 고갈 감지. 약 {int(blocked_until - time.time())}s 동안 "
+            f"로컬 fallback 모드로 전환합니다. reason={reason}"
+        )
     )
 
 
 def _raise_if_quota_blocked() -> None:
+    _load_persisted_quota_state()
     blocked_until = float(_quota_block_state.get("blocked_until", 0.0) or 0.0)
     if blocked_until <= time.time():
+        if _quota_block_state.get("reason"):
+            _quota_block_state["reason"] = ""
+            _persist_quota_state()
         return
     remaining = int(blocked_until - time.time())
     reason = _quota_block_state.get("reason") or "Gemini quota exhausted"
@@ -177,7 +313,11 @@ def _maybe_raise_quota_exhausted(error: Exception) -> None:
     if not reason:
         return
     retry_delay = _parse_retry_delay_seconds(_extract_error_payload(error))
-    _mark_quota_block(reason, retry_delay)
+    _mark_quota_block(
+        reason,
+        retry_delay,
+        daily_quota=_is_daily_quota_error(error),
+    )
     raise GeminiQuotaExhaustedError(reason) from error
 
 
@@ -470,10 +610,12 @@ async def safe_gemini_call(
     prompt: str,
     model: str = "",
     temperature: float = 0.5,
-    response_mime_type: Optional[str] = None
+    response_mime_type: Optional[str] = None,
+    call_type: str = "generic",
 ) -> str:
     """재시도, 모델 fallback, timeout, JSON mode를 포함한 공용 Gemini 호출 래퍼입니다."""
     _raise_if_quota_blocked()
+    _reserve_run_budget_slot(call_type)
     client = _get_client()
     selected_model = _normalize_model_name(model) or _default_requested_model()
     async with _gemini_sema:
@@ -786,6 +928,10 @@ def _parse_holding_insights_response(
 
 # Section D: public report-generation entry points
 
+
+def _is_local_ai_degradation(error: Exception) -> bool:
+    return isinstance(error, (GeminiQuotaExhaustedError, GeminiBudgetExceededError))
+
 async def generate_market_summary(market_indices: List[MarketIndex], market_news: List[NewsArticle], datalab_trends: List[SearchTrend] = None) -> str:
     """오늘의 주요 시황 데이터와 뉴스를 입력받아 시장 종합 요약을 생성합니다.
 
@@ -839,11 +985,19 @@ async def generate_market_summary(market_indices: List[MarketIndex], market_news
         prompt = _append_market_summary_line_limit(prompt)
         temperature = max(0.1, min(1.0, temperature + adjustments["temperature_delta"]))
 
-        response_text = await safe_gemini_call(prompt, model=model, temperature=temperature)
+        response_text = await safe_gemini_call(
+            prompt,
+            model=model,
+            temperature=temperature,
+            call_type="market_summary",
+        )
         return response_text
         
     except Exception as e:
-        global_logger.error(f"시장 요약 생성 중 오류 발생: {e}")
+        if _is_local_ai_degradation(e):
+            global_logger.warning(f"시장 요약은 로컬 fallback으로 전환합니다: {e}")
+        else:
+            global_logger.error(f"시장 요약 생성 중 오류 발생: {e}")
         return _build_market_summary_fallback(market_indices, market_news, datalab_trends)
 
 async def generate_theme_briefing(keyword: str, keyword_news: List[NewsArticle], community_posts: List[CommunityPost]) -> str:
@@ -877,11 +1031,19 @@ async def generate_theme_briefing(keyword: str, keyword_news: List[NewsArticle],
             temperature = 0.5
 
         prompt = _append_theme_briefing_limit(prompt)
-        response_text = await safe_gemini_call(prompt, model=model, temperature=temperature)
+        response_text = await safe_gemini_call(
+            prompt,
+            model=model,
+            temperature=temperature,
+            call_type="theme_single",
+        )
         return response_text
         
     except Exception as e:
-        global_logger.error(f"테마 브리핑 생성 중 오류 발생: {e}")
+        if _is_local_ai_degradation(e):
+            global_logger.warning(f"테마 브리핑은 로컬 fallback으로 전환합니다: {e}")
+        else:
+            global_logger.error(f"테마 브리핑 생성 중 오류 발생: {e}")
         return _build_theme_briefing_fallback(keyword, keyword_news, community_posts)
 
 
@@ -910,7 +1072,8 @@ async def generate_theme_briefings_batch(theme_items: List[Dict[str, Any]]) -> L
             batch_prompt,
             model=_default_requested_model(),
             temperature=0.5,
-            response_mime_type="application/json"
+            response_mime_type="application/json",
+            call_type="theme_batch",
         )
         parsed_briefings = _parse_batch_theme_response(response_text, len(theme_items))
 
@@ -921,9 +1084,12 @@ async def generate_theme_briefings_batch(theme_items: List[Dict[str, Any]]) -> L
                 missing_indices.append(idx)
 
     except Exception as e:
-        global_logger.error(f"배치 테마 브리핑 생성 중 오류 발생: {e}")
+        if _is_local_ai_degradation(e):
+            global_logger.warning(f"배치 테마 브리핑은 로컬 fallback으로 전환합니다: {e}")
+        else:
+            global_logger.error(f"배치 테마 브리핑 생성 중 오류 발생: {e}")
         missing_indices = list(range(len(theme_items)))
-        skip_ai_fallback = isinstance(e, GeminiQuotaExhaustedError)
+        skip_ai_fallback = _is_local_ai_degradation(e)
 
     if not missing_indices:
         return results
@@ -992,7 +1158,12 @@ async def generate_personalized_portfolio_analysis(holdings: List[str], market_s
             model = _default_requested_model()
             temperature = 0.5
 
-        response_text = await safe_gemini_call(prompt, model=model, temperature=temperature)
+        response_text = await safe_gemini_call(
+            prompt,
+            model=model,
+            temperature=temperature,
+            call_type="portfolio_analysis",
+        )
         return response_text
         
     except Exception as e:
@@ -1055,10 +1226,14 @@ async def generate_holding_insights(
             model=_default_requested_model(),
             temperature=0.3,
             response_mime_type="application/json",
+            call_type="holding_insights",
         )
         return _parse_holding_insights_response(response_text, holdings, holding_news_map)
     except Exception as e:
-        global_logger.error(f"보유 종목별 인사이트 생성 중 오류 발생: {e}")
+        if _is_local_ai_degradation(e):
+            global_logger.warning(f"보유 종목별 인사이트는 로컬 fallback으로 전환합니다: {e}")
+        else:
+            global_logger.error(f"보유 종목별 인사이트 생성 중 오류 발생: {e}")
         return _fallback_holding_insights(
             holdings,
             holding_news_map,

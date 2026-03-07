@@ -22,6 +22,9 @@ jobs:
     timeout-minutes: 5
     env:
       STOCK_DB_PATH: data/stock_project.db
+      PIPELINE_RUN_INTERVAL_HOURS: "3"
+      GEMINI_DAILY_REQUEST_BUDGET: "16"
+      GEMINI_QUOTA_BLOCK_SECONDS: "300"
 
     steps:
       - name: 저장소 체크아웃 (Checkout Repository)

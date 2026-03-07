@@ -4,6 +4,7 @@ AI 요약 서비스 배치 브리핑 단위 테스트 모듈.
 [Task 6.23, REQ-P05]
 """
 
+import os
 import sys
 import types
 import unittest
@@ -41,16 +42,18 @@ sys.modules.setdefault("google.genai.errors", mock_errors_module)
 
 from src.models import MarketIndex, NewsArticle
 from src.services.ai_summarizer import (
+    GeminiBudgetExceededError,
     GeminiQuotaExhaustedError,
-    _reset_gemini_runtime_state,
-    generate_market_summary,
-    safe_gemini_call,
     _is_model_not_found_error,
     _parse_batch_theme_response,
     _parse_holding_insights_response,
     _pick_runtime_model,
+    _reset_gemini_runtime_state,
     generate_holding_insights,
+    generate_market_summary,
     generate_theme_briefings_batch,
+    prepare_ai_run,
+    safe_gemini_call,
 )
 
 
@@ -397,6 +400,14 @@ class TestGeminiQuotaGuard(unittest.IsolatedAsyncioTestCase):
         )
 
         with (
+            patch(
+                "src.services.ai_summarizer.get_db",
+                return_value=types.SimpleNamespace(
+                    get_runtime_state=lambda _key: None,
+                    set_runtime_state=lambda _key, _value: None,
+                    delete_runtime_state=lambda _key: None,
+                ),
+            ),
             patch("src.services.ai_summarizer._get_client", return_value=MagicMock()),
             patch(
                 "src.services.ai_summarizer._get_available_models",
@@ -411,6 +422,38 @@ class TestGeminiQuotaGuard(unittest.IsolatedAsyncioTestCase):
                 await safe_gemini_call("prompt")
             with self.assertRaises(GeminiQuotaExhaustedError):
                 await safe_gemini_call("prompt-2")
+
+        self.assertEqual(mock_generate.await_count, 1)
+
+    async def test_safe_gemini_call_respects_run_budget(self):
+        with patch.dict(os.environ, {"GEMINI_MAX_REMOTE_CALLS_PER_RUN": "1"}, clear=False):
+            _reset_gemini_runtime_state()
+            with (
+                patch(
+                    "src.services.ai_summarizer.get_db",
+                    return_value=types.SimpleNamespace(
+                        get_runtime_state=lambda _key: None,
+                        set_runtime_state=lambda _key, _value: None,
+                        delete_runtime_state=lambda _key: None,
+                    ),
+                ),
+            ):
+                prepare_ai_run()
+            with (
+                patch("src.services.ai_summarizer._get_client", return_value=MagicMock()),
+                patch(
+                    "src.services.ai_summarizer._get_available_models",
+                    new=AsyncMock(return_value=["gemini-2.5-flash"]),
+                ),
+                patch(
+                    "src.services.ai_summarizer._generate_content_with_model",
+                    new=AsyncMock(return_value=types.SimpleNamespace(text="ok")),
+                ) as mock_generate,
+            ):
+                result = await safe_gemini_call("prompt")
+                self.assertEqual(result, "ok")
+                with self.assertRaises(GeminiBudgetExceededError):
+                    await safe_gemini_call("prompt-2")
 
         self.assertEqual(mock_generate.await_count, 1)
 
