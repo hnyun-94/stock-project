@@ -89,6 +89,12 @@
 - `decision_tiles`, `market_scoreboard`, `insight_lenses` 기반 payload 확장
 - 이메일 HTML 표/blockquote 스타일 강화 및 compact brief 렌더링 구조 도입
 
+20. 2026-03-07 이메일 렌더링/Quota 방어 후속 보강
+- 이메일 제목을 실제 heading으로 렌더링하고, 테이블 기반 wrapper + 인라인 스타일로 메일 클라이언트 호환성을 강화
+- 저신호 포털 문구 필터, 시장 카드용 `why_it_matters`, 종목별 고유 watch point 정제를 추가
+- Gemini per-run budget, persistent quota block, 사용자 간 런타임 cache 재사용으로 free-tier 429 재발 가능성 축소
+- UI/UX 전문가, 퍼블리셔 전문가를 review 문서/skill/hook 검증 체계에 반영
+
 ---
 
 ## 3) 코드 기준선 (핵심 모듈)
@@ -130,7 +136,7 @@
 
 - 테스트 명령:
   - `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q`
-- 최신 기준: **142 passed**
+- 최신 기준: **146 passed**
 
 ---
 

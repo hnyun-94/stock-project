@@ -7,58 +7,56 @@ Codex reading guide:
 3. 주요 외부 의존성은 Notion, Gemini, SQLite, 이메일 큐입니다.
 """
 
+import asyncio
+import json
 import os
 import sys
-import json
-import traceback
-import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
 from dotenv import load_dotenv
 
 # 스크립트 실행을 위해 환경변수 및 모듈 경로 로드
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
-from src.crawlers.naver_news import get_market_news
-from src.crawlers.market_index import get_market_indices
-from src.crawlers.community import get_dc_stock_gallery, get_reddit_wallstreetbets
-from src.crawlers.naver_datalab import get_naver_datalab_trends
-from src.crawlers.http_client import close_session
 from src.crawlers.browser_pool import BrowserPool
-
+from src.crawlers.community import get_dc_stock_gallery, get_reddit_wallstreetbets
+from src.crawlers.http_client import close_session
+from src.crawlers.market_index import get_market_indices
+from src.crawlers.naver_datalab import get_naver_datalab_trends
+from src.crawlers.naver_news import get_market_news
 from src.services.ai_summarizer import (
+    generate_holding_insights,
     generate_market_summary,
     generate_theme_briefings_batch,
-    generate_holding_insights,
+    prepare_ai_run,
 )
-from src.services.prompt_manager import fetch_prompts_from_notion
+from src.services.ai_tracker import record_prediction_snapshot
 from src.services.community_safety import (
     filter_community_posts_by_source,
     flatten_safe_community_posts,
+)
+from src.services.connector_alerts import dispatch_connector_health_alerts
+from src.services.feedback_manager import generate_feedback_links_html
+from src.services.market_external_connectors import (
+    collect_external_source_snapshot,
 )
 from src.services.market_source_governance import (
     evaluate_active_sources,
     get_default_source_policies,
     parse_active_source_ids,
 )
-from src.services.market_external_connectors import (
-    collect_external_source_snapshot,
-)
-from src.services.connector_alerts import dispatch_connector_health_alerts
+from src.services.notifier.email import EmailSender
+from src.services.notifier.queue_worker import NotificationAction, global_message_queue
+from src.services.prompt_manager import fetch_prompts_from_notion
 from src.services.report_builder import build_report_payload
 from src.services.topic_news import collect_topic_news
-from src.utils.report_formatter import build_structured_markdown_report
 from src.services.user_manager import fetch_active_users
-from src.services.ai_tracker import record_prediction_snapshot
-from src.services.feedback_manager import generate_feedback_links_html
-from src.utils.sentiment import analyze_sentiment
 from src.utils.database import close_db, get_db
-
-from src.services.notifier.email import EmailSender
-from src.services.notifier.telegram import TelegramSender
-from src.services.notifier.queue_worker import global_message_queue, NotificationAction
 from src.utils.logger import global_logger, log_critical_error
+from src.utils.report_formatter import build_structured_markdown_report
+from src.utils.sentiment import analyze_sentiment
 
 
 def _parse_int_env(env_key: str, default_value: int) -> int:
@@ -142,6 +140,7 @@ async def run_pipeline() -> None:
     """리포트 생성, 이력 저장, 발송까지 포함한 전체 배치를 실행합니다."""
     global_logger.info("=== 🚀 주식 리포트 생성 파이프라인 시작 ===")
     report_reference_time = datetime.now(ZoneInfo("Asia/Seoul"))
+    prepare_ai_run()
 
     # 실행 시작 전 데이터 소스 정책/무료 한도 점검
     _run_source_governance_check()
@@ -232,6 +231,9 @@ async def run_pipeline() -> None:
         connector_metric_trends_7d = db.get_connector_metric_trends(days=8)
         avg_feedback_score_30d = db.get_average_score(days=30)
         avg_accuracy_30d = db.get_average_accuracy(days=30)
+        topic_news_runtime_cache = {}
+        theme_runtime_cache = {}
+        holding_runtime_cache = {}
 
         # Phase 4: 사용자별 추가 수집, AI 개인화, 스냅샷 비교, 발송을 처리합니다.
         for idx, user in enumerate(users, 1):
@@ -241,29 +243,43 @@ async def run_pipeline() -> None:
             keywords_to_search = user.keywords[:2]
             holdings_to_analyze = user.holdings[:4]
             search_topics = list(dict.fromkeys(keywords_to_search + holdings_to_analyze))
-            global_logger.info(
-                f"      - 토픽 뉴스 수집 중 (키워드 {keywords_to_search}, 보유종목 {holdings_to_analyze})..."
-            )
-            topic_news_map = await collect_topic_news(
-                search_topics,
-                cache_prefix="topic_news",
-            )
+            topic_cache_key = tuple(search_topics)
+            if topic_cache_key in topic_news_runtime_cache:
+                global_logger.info(
+                    f"      - 토픽 뉴스 재사용 중 (키워드 {keywords_to_search}, 보유종목 {holdings_to_analyze})..."
+                )
+                topic_news_map = topic_news_runtime_cache[topic_cache_key]
+            else:
+                global_logger.info(
+                    f"      - 토픽 뉴스 수집 중 (키워드 {keywords_to_search}, 보유종목 {holdings_to_analyze})..."
+                )
+                topic_news_map = await collect_topic_news(
+                    search_topics,
+                    cache_prefix="topic_news",
+                )
+                topic_news_runtime_cache[topic_cache_key] = topic_news_map
 
             # 테마 브리핑은 batch 1회 호출을 우선 사용하고, 누락 건만 개별 fallback 합니다.
-            theme_items = []
-            for keyword in keywords_to_search:
-                global_logger.info(f"      - '{keyword}' 테마 배치 요약 입력 구성 중...")
-                theme_items.append(
-                    {
-                        "keyword": keyword,
-                        "keyword_news": topic_news_map.get(keyword, []),
-                        "community_posts": [],
-                    }
-                )
-            kw_md_results = await generate_theme_briefings_batch(theme_items)
-            theme_sections = []
-            for keyword, md_text in zip(keywords_to_search, kw_md_results):
-                theme_sections.append({"keyword": keyword, "briefing_md": md_text})
+            theme_cache_key = tuple(keywords_to_search)
+            if theme_cache_key in theme_runtime_cache:
+                global_logger.info("      - 테마 브리핑 결과 재사용 중...")
+                theme_sections = theme_runtime_cache[theme_cache_key]
+            else:
+                theme_items = []
+                for keyword in keywords_to_search:
+                    global_logger.info(f"      - '{keyword}' 테마 배치 요약 입력 구성 중...")
+                    theme_items.append(
+                        {
+                            "keyword": keyword,
+                            "keyword_news": topic_news_map.get(keyword, []),
+                            "community_posts": [],
+                        }
+                    )
+                kw_md_results = await generate_theme_briefings_batch(theme_items)
+                theme_sections = []
+                for keyword, md_text in zip(keywords_to_search, kw_md_results):
+                    theme_sections.append({"keyword": keyword, "briefing_md": md_text})
+                theme_runtime_cache[theme_cache_key] = theme_sections
 
             theme_news_map = {
                 keyword: topic_news_map.get(keyword, [])
@@ -275,15 +291,27 @@ async def run_pipeline() -> None:
             }
             holding_insights = []
             if holdings_to_analyze:
-                global_logger.info(
-                    f"      - '{name}'님 보유 종목({holdings_to_analyze}) 기반 개별 인사이트 생성 중..."
-                )
-                holding_insights = await generate_holding_insights(
-                    holdings_to_analyze,
+                holding_cache_key = (
+                    tuple(holdings_to_analyze),
                     market_summary_md,
-                    [section["briefing_md"] for section in theme_sections],
-                    holding_news_map,
+                    tuple(section["briefing_md"] for section in theme_sections),
                 )
+                if holding_cache_key in holding_runtime_cache:
+                    global_logger.info(
+                        f"      - '{name}'님 보유 종목 인사이트 결과 재사용 중..."
+                    )
+                    holding_insights = holding_runtime_cache[holding_cache_key]
+                else:
+                    global_logger.info(
+                        f"      - '{name}'님 보유 종목({holdings_to_analyze}) 기반 개별 인사이트 생성 중..."
+                    )
+                    holding_insights = await generate_holding_insights(
+                        holdings_to_analyze,
+                        market_summary_md,
+                        [section["briefing_md"] for section in theme_sections],
+                        holding_news_map,
+                    )
+                    holding_runtime_cache[holding_cache_key] = holding_insights
 
             recent_report_rows = db.get_recent_report_snapshots(name, limit=2)
             weekly_report_rows = db.get_report_snapshots_since(name, days=7)

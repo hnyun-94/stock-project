@@ -1,7 +1,7 @@
 # Next Steps Roadmap (Post Phase 6)
 
 작성일: 2026-03-07  
-기준: PR #20 ~ #50 머지 완료 상태
+기준: PR #20 ~ #50 머지 완료 상태 + 2026-03-07 후속 보강
 완료 작업 기준선: `done/completed_work_report.md`
 
 ---
@@ -9,7 +9,7 @@
 ## 1) 현재 기준선
 
 - 코드베이스: `master` clean
-- 품질 게이트: `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q` → **142 passed**
+- 품질 게이트: `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q` → **146 passed**
 - 완료 범위:
   - Git 거버넌스(커밋/푸시/PR/리뷰/머지) 강제
   - Gemini 404 복원력 + Prompt/CI 안정화
@@ -19,7 +19,8 @@
   - notifier/품질 게이트 하드닝 + changed-file lint
   - 리포트 Markdown 가독성 재설계
   - 리포트 구독자 친화 레이아웃 재배치(상단 대시보드, 3축 브리핑, 시간대 압축판)
-  - `gh`/`uv` 위임 정책 정리 + 9개 역할 리뷰 체계 확장
+  - 이메일 렌더링 보강(h1, inline style, table wrapper) + Gemini run budget/quota block 운영값 명시
+  - `gh`/`uv` 위임 정책 정리 + 11개 역할 리뷰 체계 확장
   - Completion Context Triage 정책 + `AGENTS.md` 상위 라우팅 구조 최적화
 
 ---
@@ -119,5 +120,5 @@
 
 - 커밋당 변경량(추가+삭제): 최대 400 lines
 - 기능 1개 = PR 1개 원칙
-- 각 PR에서 다중 역할 리뷰(PM/TPM/기획자/시니어 개발자/개발자/품질 담당자/신입개발자/운영자/주식 전문가) 필수
+- 각 PR에서 다중 역할 리뷰(PM/TPM/기획자/시니어 개발자/개발자/품질 담당자/신입개발자/운영자/주식 전문가/UI/UX 전문가/퍼블리셔 전문가) 필수
 - 프롬프트/지시문/컨텍스트 구조를 다루는 PR은 프롬프트 전문가와 컨텍스트 엔지니어 관점도 추가 검토
