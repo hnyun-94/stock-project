@@ -10,12 +10,14 @@ src/utils/database.py의 Database 클래스 동작을 검증합니다.
 import os
 import unittest
 from unittest.mock import MagicMock
+from unittest.mock import patch
 import sys
 import tempfile
+from pathlib import Path
 
 sys.modules['src.utils.logger'] = MagicMock()
 
-from src.utils.database import Database
+from src.utils.database import Database, close_db, get_db, resolve_db_path
 
 
 class TestDatabase(unittest.TestCase):
@@ -156,6 +158,40 @@ class TestDatabase(unittest.TestCase):
         rows = self.db.get_report_snapshots_since("A", days=1)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["user_name"], "A")
+
+    def test_resolve_db_path_prefers_environment_variable(self):
+        """환경변수 STOCK_DB_PATH가 기본 경로보다 우선한다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = os.path.join(temp_dir, "runtime.db")
+            with patch.dict(os.environ, {"STOCK_DB_PATH": env_path}, clear=False):
+                self.assertEqual(resolve_db_path(), env_path)
+
+    def test_get_db_uses_environment_path(self):
+        """get_db()가 런타임 환경변수 경로를 반영한다."""
+        close_db()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = os.path.join(temp_dir, "runtime.db")
+            with patch.dict(os.environ, {"STOCK_DB_PATH": env_path}, clear=False):
+                db = get_db()
+                self.assertEqual(db.db_path, env_path)
+                db.insert_feedback("홍길동", 5)
+                self.assertTrue(os.path.exists(env_path))
+        close_db()
+
+    def test_database_recovers_from_corrupted_file(self):
+        """손상된 SQLite 파일이 있으면 백업 후 새 DB를 생성한다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            broken_path = os.path.join(temp_dir, "broken.db")
+            Path(broken_path).write_text("not-a-sqlite-db", encoding="utf-8")
+
+            recovered = Database(broken_path)
+            recovered.insert_feedback("복구", 4)
+            rows = recovered.get_recent_feedbacks(days=1)
+            recovered.close()
+
+            self.assertEqual(len(rows), 1)
+            backups = list(Path(temp_dir).glob("broken.db.corrupt-*"))
+            self.assertTrue(backups)
 
 
 if __name__ == "__main__":

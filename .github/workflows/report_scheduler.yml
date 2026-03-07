@@ -20,22 +20,24 @@ jobs:
   build-and-run:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      STOCK_DB_PATH: data/stock_project.db
 
     steps:
       - name: 저장소 체크아웃 (Checkout Repository)
         uses: actions/checkout@v4
 
       - name: SQLite 저장 디렉토리 준비
-        run: mkdir -p data
+        run: mkdir -p "$(dirname "$STOCK_DB_PATH")"
 
       - name: SQLite 캐시 복구
         id: sqlite-cache-restore
         uses: actions/cache/restore@v4
         with:
           path: |
-            data/stock_project.db
-            data/stock_project.db-shm
-            data/stock_project.db-wal
+            ${{ env.STOCK_DB_PATH }}
+            ${{ env.STOCK_DB_PATH }}-shm
+            ${{ env.STOCK_DB_PATH }}-wal
           key: stock-db-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             stock-db-${{ github.ref_name }}-
@@ -54,6 +56,11 @@ jobs:
           export PATH="$HOME/.cargo/bin:$PATH"
           uv sync --frozen
 
+      - name: SQLite 런타임 상태 사전 점검
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          uv run python scripts/check_runtime_state.py --db-path "$STOCK_DB_PATH" --label "pre-run"
+
       - name: 리포트 생성 및 전송 파이프라인 실행
         env:
           # GitHub Secrets에 등록된 환경 변수들을 여기서 주입합니다.
@@ -69,17 +76,22 @@ jobs:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
           REDDIT_ENABLED: "false"
-          STOCK_DB_PATH: data/stock_project.db
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           uv run python -m src.main
+
+      - name: SQLite 런타임 상태 사후 점검
+        if: ${{ always() }}
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          uv run python scripts/check_runtime_state.py --db-path "$STOCK_DB_PATH" --label "post-run"
 
       - name: SQLite 캐시 저장
         if: ${{ always() && hashFiles('data/stock_project.db') != '' }}
         uses: actions/cache/save@v4
         with:
           path: |
-            data/stock_project.db
-            data/stock_project.db-shm
-            data/stock_project.db-wal
+            ${{ env.STOCK_DB_PATH }}
+            ${{ env.STOCK_DB_PATH }}-shm
+            ${{ env.STOCK_DB_PATH }}-wal
           key: ${{ steps.sqlite-cache-restore.outputs.cache-primary-key }}

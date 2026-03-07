@@ -34,7 +34,15 @@ DB_PATH = os.path.join("data", "stock_project.db")
 
 # 싱글톤 인스턴스 (스레드 안전)
 _db_instance = None
+_db_instance_path: Optional[str] = None
 _lock = threading.Lock()
+
+
+def resolve_db_path(db_path: Optional[str] = None) -> str:
+    """환경변수와 기본값을 반영해 실제 DB 경로를 결정합니다."""
+    raw_path = (db_path or os.getenv("STOCK_DB_PATH") or DB_PATH).strip()
+    expanded = os.path.expanduser(raw_path)
+    return os.path.abspath(expanded)
 
 
 class Database:
@@ -43,14 +51,68 @@ class Database:
     싱글톤 패턴으로 프로세스 내 단일 인스턴스만 생성됩니다.
     """
 
-    def __init__(self, db_path: str = DB_PATH):
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self._db_path = db_path
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")  # 성능 최적화
+    def __init__(self, db_path: Optional[str] = None):
+        self._db_path = resolve_db_path(db_path)
+        self._ensure_parent_dir(self._db_path)
+        self._conn = self._connect_with_recovery(self._db_path)
         self._create_tables()
-        global_logger.info(f"🗄️ [DB] SQLite 연결 완료: {db_path}")
+        global_logger.info(f"🗄️ [DB] SQLite 연결 완료: {self._db_path}")
+
+    @staticmethod
+    def _ensure_parent_dir(db_path: str) -> None:
+        """DB 파일의 상위 디렉토리를 생성합니다."""
+        parent_dir = os.path.dirname(db_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+
+    def _configure_connection(self, conn: sqlite3.Connection) -> None:
+        """SQLite 연결 공통 설정을 적용합니다."""
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
+
+    def _run_integrity_check(self, conn: sqlite3.Connection) -> None:
+        """SQLite 무결성을 검증합니다."""
+        result = conn.execute("PRAGMA integrity_check(1)").fetchone()
+        status = result[0] if result else "unknown"
+        if status != "ok":
+            raise sqlite3.DatabaseError(f"integrity_check failed: {status}")
+
+    def _backup_corrupted_db_files(self, db_path: str) -> None:
+        """손상된 DB 관련 파일을 백업 이름으로 이동합니다."""
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        moved_files = []
+        for suffix in ("", "-shm", "-wal"):
+            original = f"{db_path}{suffix}"
+            if not os.path.exists(original):
+                continue
+            backup = f"{original}.corrupt-{timestamp}"
+            os.replace(original, backup)
+            moved_files.append(os.path.basename(backup))
+        if moved_files:
+            global_logger.warning(
+                "🧯 [DB] 손상된 SQLite 파일을 백업 후 재생성합니다: %s",
+                ", ".join(moved_files),
+            )
+
+    def _connect_with_recovery(self, db_path: str) -> sqlite3.Connection:
+        """손상 복구를 포함한 SQLite 연결을 생성합니다."""
+        conn: Optional[sqlite3.Connection] = None
+        try:
+            conn = sqlite3.connect(db_path, check_same_thread=False)
+            self._configure_connection(conn)
+            self._run_integrity_check(conn)
+            return conn
+        except sqlite3.DatabaseError as exc:
+            if conn is not None:
+                conn.close()
+            global_logger.error(f"🛠️ [DB] 무결성 검증 실패, 복구를 시도합니다: {exc}")
+            self._backup_corrupted_db_files(db_path)
+            conn = sqlite3.connect(db_path, check_same_thread=False)
+            self._configure_connection(conn)
+            return conn
 
     def _create_tables(self):
         """필요한 테이블을 생성합니다 (없을 경우에만)."""
@@ -209,8 +271,18 @@ class Database:
 
     def close(self) -> None:
         """데이터베이스 연결을 닫습니다."""
+        try:
+            self._conn.commit()
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.DatabaseError as exc:
+            global_logger.warning(f"🗄️ [DB] close checkpoint 중 경고: {exc}")
         self._conn.close()
         global_logger.info("🗄️ [DB] SQLite 연결 종료")
+
+    @property
+    def db_path(self) -> str:
+        """현재 연결 중인 SQLite 파일 경로를 반환합니다."""
+        return self._db_path
 
     def update_snapshot_score(self, snapshot_id: int, score: float) -> None:
         """예측 스냅샷의 적중률 점수를 업데이트합니다.
@@ -396,8 +468,23 @@ class Database:
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    def get_runtime_state_counts(self) -> Dict[str, int]:
+        """운영 상태 점검용 핵심 테이블 row count를 반환합니다."""
+        table_names = [
+            "feedbacks",
+            "prediction_snapshots",
+            "report_snapshots",
+            "external_connector_runs",
+            "prompt_usage_log",
+        ]
+        counts: Dict[str, int] = {}
+        for table_name in table_names:
+            cursor = self._conn.execute(f"SELECT COUNT(*) FROM {table_name}")
+            counts[table_name] = int(cursor.fetchone()[0] or 0)
+        return counts
 
-def get_db(db_path: str = DB_PATH) -> Database:
+
+def get_db(db_path: Optional[str] = None) -> Database:
     """Database 싱글톤 인스턴스를 반환합니다.
 
     스레드 안전하게 한 번만 생성됩니다.
@@ -408,20 +495,27 @@ def get_db(db_path: str = DB_PATH) -> Database:
     Returns:
         Database 인스턴스
     """
-    global _db_instance
-    if _db_instance is None:
+    global _db_instance, _db_instance_path
+    resolved_path = resolve_db_path(db_path)
+    if _db_instance is None or _db_instance_path != resolved_path:
         with _lock:
+            if _db_instance is not None and _db_instance_path != resolved_path:
+                _db_instance.close()
+                _db_instance = None
+                _db_instance_path = None
             if _db_instance is None:
-                _db_instance = Database(db_path)
+                _db_instance = Database(resolved_path)
+                _db_instance_path = resolved_path
     return _db_instance
 
 
 def close_db() -> None:
     """전역 Database 인스턴스를 안전하게 종료합니다."""
-    global _db_instance
+    global _db_instance, _db_instance_path
     if _db_instance is None:
         return
     with _lock:
         if _db_instance is not None:
             _db_instance.close()
             _db_instance = None
+            _db_instance_path = None
