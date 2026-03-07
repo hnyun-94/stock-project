@@ -7,7 +7,11 @@ import unittest
 from datetime import datetime
 
 from src.models import CommunityPost, MarketIndex, NewsArticle, SearchTrend
-from src.services.report_builder import build_report_payload, extract_key_points
+from src.services.report_builder import (
+    _signal_news_items,
+    build_report_payload,
+    extract_key_points,
+)
 
 
 class TestReportBuilder(unittest.TestCase):
@@ -25,6 +29,25 @@ class TestReportBuilder(unittest.TestCase):
 
         self.assertEqual(len(points), 3)
         self.assertIn("첫 번째 문장입니다.", points[0])
+
+    def test_signal_news_items_filters_portal_noise(self):
+        news_items = [
+            NewsArticle(
+                title="언론사 선정언론사가 선정한 주요기사 혹은 심층기획 기사입니다.",
+                link="https://noise1",
+                summary="네이버 메인에서 보고 싶은 언론사를 구독하세요.",
+            ),
+            NewsArticle(
+                title="AI 서버 투자 확대",
+                link="https://signal1",
+                summary="데이터센터 투자가 늘며 GPU와 HBM 수요가 살아나는 흐름입니다.",
+            ),
+        ]
+
+        filtered = _signal_news_items(news_items, limit=2)
+
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0].title, "AI 서버 투자 확대")
 
     def test_build_report_payload_creates_value_focused_sections(self):
         previous_snapshot = {
@@ -167,9 +190,10 @@ class TestReportBuilder(unittest.TestCase):
         self.assertIn("인공지능(AI)", snapshot["focus_keywords"])
         self.assertTrue(any(item["term"] == "AI" for item in payload["glossary"]))
         self.assertTrue(any(item["term"] == "OpenDART" for item in payload["glossary"]))
-        self.assertTrue(
-            any("왜 중요한가" in detail or "확인할 것" in detail for detail in payload["theme_sections"][0]["details"])
-        )
+        self.assertTrue(payload["theme_sections"][0]["why_it_matters"])
+        self.assertTrue(payload["theme_sections"][0]["watch_points"])
+        self.assertTrue(payload["holding_sections"][0]["why_it_matters"])
+        self.assertTrue(payload["holding_sections"][0]["watch_points"])
 
     def test_build_report_payload_filters_failure_strings_from_sections(self):
         payload, _ = build_report_payload(
@@ -217,6 +241,47 @@ class TestReportBuilder(unittest.TestCase):
         self.assertNotIn("생성 실패", serialized)
         self.assertIn("GPU 수요 확대", serialized)
         self.assertIn("table_headers", serialized)
+
+    def test_build_report_payload_differentiates_holding_watch_points(self):
+        payload, _ = build_report_payload(
+            user_name="홍길동",
+            market_summary_md="## 📈 오늘의 시장 요약\nAI 반도체와 메모리 수요가 유지되고 있습니다.",
+            market_indices=[],
+            market_news=[],
+            datalab_trends=[],
+            theme_sections=[],
+            theme_news_map={},
+            sentiment_score=5,
+            sentiment_label="🟡 중립",
+            holding_insights=[
+                {"holding": "삼성전자", "stance": "관찰", "summary": "최근 이슈는 옵션 가이드이며 톤은 혼조입니다.", "action": ""},
+                {"holding": "엔비디아", "stance": "관찰", "summary": "최근 이슈는 옵션 가이드이며 톤은 혼조입니다.", "action": ""},
+            ],
+            holding_news_map={
+                "삼성전자": [
+                    NewsArticle(title="삼성전자 HBM 공급 확대", link="https://s1", summary="HBM 납품 확대 기대가 있습니다.")
+                ],
+                "엔비디아": [
+                    NewsArticle(title="엔비디아 데이터센터 매출 성장", link="https://n1", summary="GPU 출하와 데이터센터 매출이 핵심입니다.")
+                ],
+            },
+            community_posts=[],
+            recent_report_rows=[],
+            weekly_report_rows=[],
+            monthly_report_rows=[],
+            connector_success_rate_7d={},
+            connector_success_rate_30d={},
+            avg_feedback_score_30d=0,
+            avg_accuracy_30d=0,
+            connector_daily_rollups_7d=[],
+            recent_connector_failures_7d=[],
+            connector_metric_trends_7d=[],
+        )
+
+        samsung, nvidia = payload["holding_sections"]
+        self.assertIn("HBM 납품 확대", samsung["watch_points"][0])
+        self.assertIn("GPU 출하", nvidia["watch_points"][0])
+        self.assertNotIn("옵션 가이드", samsung["summary"])
 
 
 if __name__ == "__main__":
