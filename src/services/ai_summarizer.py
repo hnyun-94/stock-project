@@ -72,6 +72,9 @@ _quota_block_seconds = int(os.getenv("GEMINI_QUOTA_BLOCK_SECONDS", "300"))
 _quota_retry_total_timeout_seconds = float(
     os.getenv("GEMINI_QUOTA_RETRY_TOTAL_TIMEOUT_SECONDS", "60")
 )
+_quota_retry_delay_buffer_seconds = int(
+    os.getenv("GEMINI_QUOTA_RETRY_DELAY_BUFFER_SECONDS", "3")
+)
 _quota_state_key = "gemini_quota_block"
 _persisted_quota_loaded = False
 _run_budget_state: Dict[str, int] = {
@@ -324,13 +327,19 @@ def _maybe_raise_quota_exhausted(error: Exception) -> None:
     raise GeminiQuotaExhaustedError(reason) from error
 
 
+def _quota_retry_wait_seconds(retry_delay_seconds: int) -> int:
+    """Gemini가 준 retryDelay에 안전 버퍼를 더한 실제 대기 시간을 계산합니다."""
+    return max(0, retry_delay_seconds + _quota_retry_delay_buffer_seconds)
+
+
 def _quota_retry_delay_allowed(*, retry_delay_seconds: int, call_started_at: float) -> bool:
     """quota retryDelay를 실제로 기다릴지 결정합니다."""
-    if retry_delay_seconds <= 0:
+    wait_seconds = _quota_retry_wait_seconds(retry_delay_seconds)
+    if wait_seconds <= 0:
         return False
     elapsed = max(0.0, time.monotonic() - call_started_at)
     remaining_budget = max(0.0, _quota_retry_total_timeout_seconds - elapsed)
-    return retry_delay_seconds <= remaining_budget
+    return wait_seconds <= remaining_budget
 
 
 async def _generate_content_with_quota_retry(
@@ -357,17 +366,19 @@ async def _generate_content_with_quota_retry(
         reason = _build_quota_reason(error)
         if reason:
             retry_delay = _parse_retry_delay_seconds(_extract_error_payload(error))
+            wait_seconds = _quota_retry_wait_seconds(retry_delay)
             if _quota_retry_delay_allowed(
                 retry_delay_seconds=retry_delay,
                 call_started_at=call_started_at,
             ):
                 global_logger.warning(
                     (
-                        f"[GeminiQuota] retryDelay {retry_delay}s 감지. "
-                        f"{call_type} 호출은 해당 시간 대기 후 1회 재시도합니다."
+                        f"[GeminiQuota] retryDelay {retry_delay}s (+buffer "
+                        f"{_quota_retry_delay_buffer_seconds}s) 감지. "
+                        f"{call_type} 호출은 {wait_seconds}s 대기 후 1회 재시도합니다."
                     )
                 )
-                await asyncio.sleep(retry_delay)
+                await asyncio.sleep(wait_seconds)
                 try:
                     response = await _generate_content_with_model(
                         client,
@@ -392,7 +403,8 @@ async def _generate_content_with_quota_retry(
                 remaining_budget = max(0.0, _quota_retry_total_timeout_seconds - elapsed)
                 global_logger.warning(
                     (
-                        f"[GeminiQuota] retryDelay {retry_delay}s 이지만 "
+                        f"[GeminiQuota] retryDelay {retry_delay}s (+buffer "
+                        f"{_quota_retry_delay_buffer_seconds}s -> {wait_seconds}s) 이지만 "
                         f"남은 대기 예산 {remaining_budget:.1f}s를 초과해 "
                         "로컬 fallback으로 전환합니다."
                     )

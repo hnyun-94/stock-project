@@ -111,7 +111,7 @@
 - 표 셀까지 포함한 공통 강조 렌더링을 적용해 `중립`, `AI`, `HBM`, `환율` 같은 핵심 포인트의 스캔성을 강화
 
 24. 2026-03-08 Gemini quota delay-aware retry 보강
-- Gemini 429 quota 오류에서 `RetryInfo.retryDelay`를 읽고, 60초 이내 대기만 허용하는 지연 재시도 경로를 추가
+- Gemini 429 quota 오류에서 `RetryInfo.retryDelay + 3초`를 실제 대기 시간으로 사용하고, 60초 이내 대기만 허용하는 지연 재시도 경로를 추가
 - 짧은 quota 구간에서는 한 번 더 AI 응답 복구를 시도하고, 60초 초과 대기나 재실패 시에는 기존 로컬 fallback/quota block으로 전환
 - 관련 회귀 테스트를 추가해 짧은 delay 성공, 긴 delay fallback, 후속 block 동작을 고정
 

@@ -425,7 +425,7 @@ class TestGeminiQuotaGuard(unittest.IsolatedAsyncioTestCase):
                 await safe_gemini_call("prompt-2")
 
         self.assertEqual(mock_generate.await_count, 2)
-        self.assertTrue(any(call.args == (54,) for call in mock_sleep.await_args_list))
+        self.assertTrue(any(call.args == (57,) for call in mock_sleep.await_args_list))
 
     async def test_safe_gemini_call_retries_after_short_quota_delay(self):
         quota_error = DummyClientError(
@@ -476,7 +476,7 @@ class TestGeminiQuotaGuard(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, "ok")
         self.assertEqual(mock_generate.await_count, 2)
-        self.assertTrue(any(call.args == (6,) for call in mock_sleep.await_args_list))
+        self.assertTrue(any(call.args == (9,) for call in mock_sleep.await_args_list))
 
     async def test_safe_gemini_call_falls_back_when_quota_delay_exceeds_budget(self):
         quota_error = DummyClientError(
