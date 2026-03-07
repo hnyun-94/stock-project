@@ -41,7 +41,10 @@ sys.modules.setdefault("google.genai.errors", mock_errors_module)
 
 from src.models import MarketIndex, NewsArticle
 from src.services.ai_summarizer import (
+    GeminiQuotaExhaustedError,
+    _reset_gemini_runtime_state,
     generate_market_summary,
+    safe_gemini_call,
     _is_model_not_found_error,
     _parse_batch_theme_response,
     _parse_holding_insights_response,
@@ -103,6 +106,9 @@ class TestBatchThemeResponseParser(unittest.TestCase):
 
 class TestGenerateThemeBriefingsBatch(unittest.IsolatedAsyncioTestCase):
     """배치 브리핑 생성 테스트."""
+
+    def setUp(self):
+        _reset_gemini_runtime_state()
 
     async def test_batch_success_without_fallback(self):
         """배치 응답이 정상일 때 개별 fallback을 호출하지 않는다."""
@@ -175,9 +181,44 @@ class TestGenerateThemeBriefingsBatch(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results, ["fallback-1", "fallback-2"])
         self.assertEqual(mock_single_call.await_count, 2)
 
+    async def test_batch_quota_error_uses_local_fallback_without_single_calls(self):
+        """quota 고갈 시 개별 Gemini fallback을 건너뛰고 로컬 브리핑으로 채운다."""
+        theme_items = [
+            {
+                "keyword": "AI",
+                "keyword_news": [
+                    NewsArticle(
+                        title="AI 서버 투자 확대",
+                        link="a.com",
+                        summary="AI 서버 증설과 메모리 수요가 함께 확대되는 흐름입니다.",
+                    )
+                ],
+                "community_posts": [],
+            }
+        ]
+
+        with (
+            patch(
+                "src.services.ai_summarizer.safe_gemini_call",
+                new=AsyncMock(side_effect=GeminiQuotaExhaustedError("quota")),
+            ),
+            patch(
+                "src.services.ai_summarizer.generate_theme_briefing",
+                new=AsyncMock(side_effect=AssertionError("single fallback should not run")),
+            ) as mock_single_call,
+        ):
+            results = await generate_theme_briefings_batch(theme_items)
+
+        self.assertEqual(mock_single_call.await_count, 0)
+        self.assertIn("AI 서버 투자 확대", results[0])
+        self.assertIn("투자 포인트", results[0])
+
 
 class TestGenerateMarketSummaryPrompt(unittest.IsolatedAsyncioTestCase):
     """시장 종합 요약 프롬프트 제약 테스트."""
+
+    def setUp(self):
+        _reset_gemini_runtime_state()
 
     async def test_market_summary_prompt_includes_five_line_limit(self):
         market_indices = [
@@ -221,9 +262,39 @@ class TestGenerateMarketSummaryPrompt(unittest.IsolatedAsyncioTestCase):
         sent_prompt = mock_call.await_args.args[0]
         self.assertIn("총 5줄 이내", sent_prompt)
 
+    async def test_market_summary_returns_structured_fallback_on_quota_error(self):
+        market_indices = [
+            MarketIndex(
+                name="KOSPI",
+                value="2500.12",
+                change="+12.34",
+                investor_summary="외국인 순매수 우위",
+            )
+        ]
+        market_news = [
+            NewsArticle(
+                title="반도체 업종 반등",
+                link="https://example.com",
+                summary="반도체 대형주가 반등하며 수급 개선 기대가 살아났습니다.",
+            )
+        ]
+
+        with patch(
+            "src.services.ai_summarizer.safe_gemini_call",
+            new=AsyncMock(side_effect=GeminiQuotaExhaustedError("quota")),
+        ):
+            summary = await generate_market_summary(market_indices, market_news)
+
+        self.assertIn("KOSPI 2500.12", summary)
+        self.assertIn("반도체 업종 반등", summary)
+        self.assertNotIn("시장 요약 생성 실패", summary)
+
 
 class TestHoldingInsights(unittest.IsolatedAsyncioTestCase):
     """보유 종목별 인사이트 생성 테스트."""
+
+    def setUp(self):
+        _reset_gemini_runtime_state()
 
     def test_parse_holding_insights_response_fills_missing_holdings(self):
         response_text = (
@@ -268,6 +339,80 @@ class TestHoldingInsights(unittest.IsolatedAsyncioTestCase):
             mock_call.await_args.kwargs.get("response_mime_type"),
             "application/json",
         )
+
+    async def test_generate_holding_insights_returns_concrete_fallback_on_quota_error(self):
+        with patch(
+            "src.services.ai_summarizer.safe_gemini_call",
+            new=AsyncMock(side_effect=GeminiQuotaExhaustedError("quota")),
+        ):
+            results = await generate_holding_insights(
+                holdings=["삼성전자"],
+                market_summary="AI 수요 회복과 메모리 반등 기대가 부각됩니다.",
+                theme_briefings=["### AI\n- HBM 공급 확대가 핵심 포인트입니다."],
+                holding_news_map={
+                    "삼성전자": [
+                        NewsArticle(
+                            title="삼성전자 HBM 공급 확대 기대",
+                            link="a.com",
+                            summary="HBM 공급 확대와 고객사 발주 기대가 동시에 반영됩니다.",
+                        )
+                    ]
+                },
+            )
+
+        self.assertEqual(results[0]["holding"], "삼성전자")
+        self.assertIn("HBM", results[0]["summary"])
+        self.assertIn("발주", results[0]["action"])
+
+
+class TestGeminiQuotaGuard(unittest.IsolatedAsyncioTestCase):
+    """Gemini quota guard 테스트."""
+
+    def setUp(self):
+        _reset_gemini_runtime_state()
+
+    async def test_safe_gemini_call_blocks_followup_calls_after_quota_error(self):
+        quota_error = DummyClientError(
+            429,
+            {
+                "error": {
+                    "status": "RESOURCE_EXHAUSTED",
+                    "message": "Quota exceeded for metric",
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                            "violations": [
+                                {
+                                    "quotaId": "GenerateRequestsPerDayPerModel-FreeTier",
+                                }
+                            ],
+                        },
+                        {
+                            "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                            "retryDelay": "54s",
+                        },
+                    ],
+                }
+            },
+        )
+
+        with (
+            patch("src.services.ai_summarizer._get_client", return_value=MagicMock()),
+            patch(
+                "src.services.ai_summarizer._get_available_models",
+                new=AsyncMock(return_value=["gemini-2.5-flash"]),
+            ),
+            patch(
+                "src.services.ai_summarizer._generate_content_with_model",
+                new=AsyncMock(side_effect=quota_error),
+            ) as mock_generate,
+        ):
+            with self.assertRaises(GeminiQuotaExhaustedError):
+                await safe_gemini_call("prompt")
+            with self.assertRaises(GeminiQuotaExhaustedError):
+                await safe_gemini_call("prompt-2")
+
+        self.assertEqual(mock_generate.await_count, 1)
 
 
 if __name__ == "__main__":
