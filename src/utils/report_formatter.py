@@ -3,7 +3,7 @@
 
 Codex reading guide:
 1. 현재 운영 경로는 `build_structured_markdown_report()`입니다.
-2. `build_markdown_report()`는 과거 자유서술 리포트 호환용 fallback입니다.
+2. payload는 builder가 가치 판단 구조를 만든 결과물이고, formatter는 동일한 읽기 패턴으로 렌더링합니다.
 3. HTML 변환은 마지막 단계에서만 수행되며, 내부 표준 표현은 Markdown입니다.
 """
 
@@ -11,35 +11,59 @@ import markdown
 
 
 def build_markdown_report(market_summary_md: str, theme_briefings_md: list) -> str:
-    """리포트 재료들을 받아 하나의 통일된 마크다운 전문을 생성합니다.
-
-    Args:
-        market_summary_md (str): 시황 요약 마크다운
-        theme_briefings_md (list): 테마별 브리핑 마크다운 리스트
-
-    Returns:
-        str: 통합된 마크다운 문자열
-    """
-    # Legacy renderer: 구조화 payload 도입 전 포맷을 유지해야 할 때만 사용합니다.
+    """리포트 재료들을 받아 하나의 통일된 마크다운 전문을 생성합니다."""
     overall_md = "🌤️ 오늘의 주식 인사이트 리포트\n\n"
     overall_md += "---\n\n"
     overall_md += market_summary_md + "\n\n"
     overall_md += "---\n\n"
 
-    
     if theme_briefings_md:
         overall_md += "## 🎯 사용자 맞춤관심 테마 분석\n\n"
         for brief in theme_briefings_md:
             overall_md += brief + "\n\n"
-    
+
     overall_md += "---\n\n*본 리포트는 자동화된 AI 및 스크래핑 시스템에 의해 수집/편집되었습니다.*"
-    
     return overall_md
+
+
+def _append_card(
+    lines: list[str],
+    *,
+    heading: str,
+    card: dict,
+    summary_label: str = "짧은 요약",
+    outlook_label: str = "앞으로 예상",
+) -> None:
+    lines.append(f"### {heading}")
+    lines.append("")
+
+    stance = card.get("stance")
+    if stance:
+        lines.append(f"- 기본 판단: {stance}")
+
+    summary = card.get("summary")
+    if summary:
+        lines.append(f"- {summary_label}: {summary}")
+
+    for idx, detail in enumerate(card.get("details", []), 1):
+        lines.append(f"- 근거 {idx}: {detail}")
+
+    if card.get("positive_view"):
+        lines.append(f"- 긍정 시각: {card['positive_view']}")
+    if card.get("neutral_view"):
+        lines.append(f"- 중립 시각: {card['neutral_view']}")
+    if card.get("negative_view"):
+        lines.append(f"- 부정 시각: {card['negative_view']}")
+    if card.get("outlook"):
+        lines.append(f"- {outlook_label}: {card['outlook']}")
+    if card.get("action"):
+        lines.append(f"- 실행 아이디어: {card['action']}")
+
+    lines.append("")
 
 
 def build_structured_markdown_report(report_payload: dict) -> str:
     """구조화된 payload를 읽기 쉬운 Markdown 리포트로 렌더링합니다."""
-    # payload가 이미 최신 -> 장기 순으로 정렬되어 있으므로 formatter는 순서를 바꾸지 않습니다.
     lines = [report_payload.get("title", "🌤️ 오늘의 주식 인사이트 리포트"), ""]
 
     subtitle = report_payload.get("subtitle")
@@ -53,53 +77,58 @@ def build_structured_markdown_report(report_payload: dict) -> str:
             lines.append(f"- {item}")
         lines.append("")
 
-    recent_focus = report_payload.get("recent_focus", [])
-    if recent_focus:
-        lines.extend(["## 📌 지금 바로 볼 것", ""])
-        for item in recent_focus:
-            lines.append(f"- {item}")
-        lines.append("")
+    quick_take = report_payload.get("quick_take")
+    if quick_take:
+        lines.extend(["## 📌 오늘 한눈에 보기", ""])
+        _append_card(lines, heading="지금의 핵심 판단", card=quick_take)
+
+    session_issue_section = report_payload.get("session_issue_section")
+    if session_issue_section:
+        lines.extend(["## 🔔 공통 이슈 브리핑", ""])
+        _append_card(
+            lines,
+            heading=session_issue_section.get("title", "공통 이슈"),
+            card=session_issue_section,
+            outlook_label="지금 구간에서 볼 것",
+        )
 
     time_windows = report_payload.get("time_windows", [])
     if time_windows:
-        lines.extend(["## 🕒 타임 윈도우", ""])
+        lines.extend(["## 🕒 타임 윈도우별 판단", ""])
         for window in time_windows:
-            lines.append(f"### {window.get('label', '')} | {window.get('title', '')}")
-            lines.append("")
-            for item in window.get("bullets", []):
-                lines.append(f"- {item}")
-            lines.append("")
+            _append_card(
+                lines,
+                heading=f"{window.get('label', '')} | {window.get('title', '')}",
+                card=window,
+            )
 
     theme_sections = report_payload.get("theme_sections", [])
     if theme_sections:
-        lines.extend(["## 🎯 관심 테마 요약", ""])
+        lines.extend(["## 🎯 관심 테마", ""])
         for section in theme_sections:
-            lines.append(f"### {section.get('keyword', '테마')}")
-            lines.append("")
-            for point in section.get("points", []):
-                lines.append(f"- {point}")
-            lines.append("")
+            _append_card(lines, heading=section.get("keyword", "테마"), card=section)
 
     holding_sections = report_payload.get("holding_sections", [])
     if holding_sections:
         lines.extend(["## 💼 보유 종목별 인사이트", ""])
         for section in holding_sections:
-            lines.append(f"### {section.get('holding', '종목')}")
-            lines.append("")
-            lines.append(f"- 상태: {section.get('stance', '관찰')}")
-            summary = section.get("summary")
-            if summary:
-                lines.append(f"- 근거: {summary}")
-            action = section.get("action")
-            if action:
-                lines.append(f"- 액션: {action}")
-            lines.append("")
+            _append_card(
+                lines,
+                heading=section.get("holding", "종목"),
+                card=section,
+                outlook_label="앞으로 예상",
+            )
 
-    long_term_plan = report_payload.get("long_term_plan", [])
-    if long_term_plan:
+    long_term_section = report_payload.get("long_term_section")
+    if long_term_section:
         lines.extend(["## 🗺️ 장기 플랜", ""])
-        for item in long_term_plan:
-            lines.append(f"- {item}")
+        _append_card(lines, heading="중장기 판단", card=long_term_section)
+
+    glossary = report_payload.get("glossary", [])
+    if glossary:
+        lines.extend(["## 🧩 용어 풀이", ""])
+        for item in glossary:
+            lines.append(f"- {item.get('term', '용어')}: {item.get('definition', '')}")
         lines.append("")
 
     footer_note = report_payload.get("footer_note")
@@ -111,8 +140,8 @@ def build_structured_markdown_report(report_payload: dict) -> str:
 
 def markdown_to_html(markdown_str: str) -> str:
     """제공된 마크다운을 이메일 발송용 CSS가 입혀진 HTML로 변환합니다."""
-    html_body = markdown.markdown(markdown_str, extensions=['tables'])
-    
+    html_body = markdown.markdown(markdown_str, extensions=["tables"])
+
     styled_html = f"""
     <html>
     <head>
