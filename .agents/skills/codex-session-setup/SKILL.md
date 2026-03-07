@@ -24,9 +24,9 @@ description: "Initialize a Codex session by loading project-management docs, che
 4. 빠른 문맥만 필요하면 `scripts/session_bootstrap.sh --no-tests`를 사용합니다.
 5. Codex 설정/훅 점검:
    `.codex/config.toml` 존재 여부, `git config --get core.hooksPath`, `.githooks/pre-push` 실행 가능 여부
-7. `AGENTS.md`의 Mandatory Delivery Workflow 섹션 존재 및 최신성 확인
-8. 이전 세션이 남긴 정제 문서(`task/`, `done/`, `README.md`, `AGENTS.md`)를 우선 기준선으로 삼고, raw 문맥 재사용은 필요한 경우에만 제한적으로 수행합니다.
-9. 결과를 요약하고, 필요한 문서/설정 동기화를 반영합니다.
+6. `AGENTS.md`는 상위 라우팅 문서이므로, 세부 절차가 필요하면 관련 skill과 `README.md`를 추가로 확인합니다.
+7. 이전 세션이 남긴 정제 문서(`task/`, `done/`, `README.md`, `AGENTS.md`)를 우선 기준선으로 삼고, raw 문맥 재사용은 필요한 경우에만 제한적으로 수행합니다.
+8. 결과를 요약하고, 필요한 문서/설정 동기화를 반영합니다.
 
 ## Essential Commands
 

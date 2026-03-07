@@ -36,6 +36,28 @@ description: "Use when the user asks to reduce approval fatigue, classify comman
    - `scripts/run_quality_gate.sh`
 5. 정책을 `AGENTS.md`, `scripts/README.md`, 필요 시 관련 skill에 반영합니다.
 
+## Repo Defaults
+
+- Delegated uv Commands
+  - `uv sync`
+  - `uv lock`, `uv export`
+  - `uv run ...`
+  - `uv tool ...`
+- Delegated gh Commands
+  - `gh pr ...`
+  - `gh run ...`
+  - `gh workflow ...`
+  - `gh repo view`
+  - `gh issue ...`
+  - `gh label list`, `gh search prs`, `gh search issues`
+- Safe wrappers
+  - `scripts/session_bootstrap.sh`
+  - `scripts/run_quality_gate.sh`
+- Always Review examples
+  - `gh api`, `gh auth`, `gh secret`, `gh variable`
+  - `gh repo edit`, `gh ruleset`, `gh release delete`
+  - `.env`, Notion schema/data mutation, Docker, destructive git
+
 ## Guardrails
 
 - 현재 repo 범위의 `gh` 협업/조회 명령은 위임할 수 있습니다.
