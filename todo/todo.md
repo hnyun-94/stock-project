@@ -115,6 +115,25 @@
 
 ---
 
+## 🚀 Phase 7 백로그 (2026-03-07 동기화)
+
+상세 실행 계획: `task/next_steps_roadmap.md`
+
+### P0 - 운영 안정성
+
+- [ ] 외부 커넥터 성공률/지연 임계치 기반 자동 알림(텔레그램) 추가
+- [ ] `external_connector_runs` 일자별 집계 리포트(성공률, 평균 지연) 배치 생성
+
+### P1 - 데이터 확장
+
+- [ ] OpenDART 분류 지표를 사용자 리포트 해석 문구와 연결(실적/자금조달/지분 변화)
+- [ ] FRED/SEC 지표를 시계열로 누적 저장하고 1D/7D 변화율 계산
+
+### P2 - 제품화
+
+- [ ] 소스별 품질 점수(성공률, 최신성) 기반 리포트 신뢰도 배지 추가
+- [ ] 운영 대시보드 문서/점검표(장애 대응 Runbook) 표준화
+
 _작성일: 2026-03-02 | 상세 요구사항: `requirements/04_phase6_optimization_requirements.md` 참조_
 _진행 Task 명세: `task/phase6_task.md` 참조_
-_갱신일: 2026-03-07 02:30 | Phase 6 최적화 항목 최신화 (REQ-P05 + Structured Output 반영, 74 Tests PASS)_
+_갱신일: 2026-03-07 | Phase 6 완료 + PR #20~#25 동기화, 103 Tests PASS_
