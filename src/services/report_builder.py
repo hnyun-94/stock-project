@@ -134,7 +134,37 @@ def _truncate_text(text: str, limit: int = 110) -> str:
     compact = _normalize_signal_text(text)
     if len(compact) <= limit:
         return compact
-    return compact[: limit - 1].rstrip() + "…"
+
+    sentences = _split_sentences(compact)
+    if sentences:
+        collected: List[str] = []
+        for sentence in sentences:
+            candidate = " ".join(collected + [sentence]).strip()
+            if len(candidate) <= limit:
+                collected.append(sentence)
+                continue
+            break
+        if collected:
+            return " ".join(collected)
+        return sentences[0]
+
+    soft_chunks = [
+        chunk.strip()
+        for chunk in re.split(r"(?<=[,:;])\s+|\s+-\s+", compact)
+        if chunk.strip()
+    ]
+    if soft_chunks:
+        collected_chunks: List[str] = []
+        for chunk in soft_chunks:
+            candidate = " ".join(collected_chunks + [chunk]).strip()
+            if len(candidate) <= limit:
+                collected_chunks.append(chunk)
+                continue
+            break
+        if collected_chunks:
+            return " ".join(collected_chunks).strip()
+
+    return compact
 
 
 def _split_sentences(text: str) -> List[str]:
@@ -940,19 +970,19 @@ def _build_card(
 ) -> Dict[str, Any]:
     cleaned_details = _clean_text_items(details, limit=3)
     return {
-        "summary": _truncate_text(summary, 120),
+        "summary": _truncate_text(summary, 150),
         "details": cleaned_details,
         "why_it_matters": (
-            _truncate_text(why_it_matters, 140)
+            _truncate_text(why_it_matters, 170)
             if why_it_matters and not _is_low_signal_text(why_it_matters)
             else ""
         ),
         "watch_points": _clean_text_items(watch_points or [], limit=3),
-        "positive_view": _truncate_text(positive_view, 90),
-        "neutral_view": _truncate_text(neutral_view, 90),
-        "negative_view": _truncate_text(negative_view, 90),
-        "outlook": _truncate_text(outlook, 100),
-        "action": _truncate_text(action, 120) if action else "",
+        "positive_view": _truncate_text(positive_view, 140),
+        "neutral_view": _truncate_text(neutral_view, 140),
+        "negative_view": _truncate_text(negative_view, 140),
+        "outlook": _truncate_text(outlook, 150),
+        "action": _truncate_text(action, 140) if action else "",
         "stance": stance,
     }
 

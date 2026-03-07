@@ -292,15 +292,16 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("## 🕒 시간대 압축판", markdown_text)
         self.assertTrue(markdown_text.startswith("# 🌤️ 리포트"))
         self.assertIn("리포트 신뢰도: 높음", markdown_text)
-        self.assertIn("| 구분 | 내용 | 왜 보나 |", markdown_text)
-        self.assertIn("| 항목 | 현재 값 | 읽는 법 |", markdown_text)
-        self.assertIn("| 구간 | 한줄 판단 | 지금 볼 것 |", markdown_text)
+        self.assertIn("| 체크 대상 | 현재 판단 | 읽는 이유 |", markdown_text)
+        self.assertIn("| 체크 대상 | 오늘 숫자 | 읽는 포인트 |", markdown_text)
+        self.assertIn("| 기간 | 핵심 요약 | 바로 볼 점 |", markdown_text)
         self.assertIn("## 🛰 데이터 신뢰도", markdown_text)
         self.assertIn("## 🧪 보조 지표 해석", markdown_text)
         self.assertIn("## 💼 보유 종목별 인사이트", markdown_text)
         self.assertIn("## 🧩 용어 풀이", markdown_text)
         self.assertIn("### 삼성전자", markdown_text)
-        self.assertIn("| 날짜 | 소스 | 성공률 | 평균 지연 | 판단 |", markdown_text)
+        self.assertIn("| 기준일 | 데이터 출처 | 정상 수집 비율 | 응답 속도 | 읽는 포인트 |", markdown_text)
+        self.assertIn("| 체크 지표 | 지금 수치 | 하루 변화 | 일주일 변화 |", markdown_text)
 
     def test_markdown_to_html_inlines_email_styles(self):
         html_text = markdown_to_html("# 제목\n\n> 요약\n\n| 항목 | 값 |\n| --- | --- |\n| KOSPI | 2600 |")
@@ -308,6 +309,8 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("<h1 style=", html_text)
         self.assertIn("<table role=\"presentation\"", html_text)
         self.assertIn("<body style=", html_text)
+        self.assertIn("#845ec2", html_text)
+        self.assertIn("#ff6f91", html_text)
 
 
 if __name__ == "__main__":

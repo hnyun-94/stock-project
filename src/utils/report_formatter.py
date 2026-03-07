@@ -12,6 +12,38 @@ from typing import Optional
 
 import markdown
 
+_PRIMARY_COLOR = "#845ec2"
+_PRIMARY_DARK = "#5f3aa5"
+_PRIMARY_TINT = "#f3ecff"
+_ACCENT_COLOR = "#ff6f91"
+_ACCENT_TINT = "#fff1f5"
+_CARD_BORDER = "#e6d7ff"
+_TEXT_COLOR = "#2d2140"
+_MUTED_TEXT = "#6d5b86"
+_TABLE_HEADER_ALIASES = {
+    "구분": "체크 대상",
+    "내용": "현재 판단",
+    "왜 보나": "읽는 이유",
+    "항목": "체크 대상",
+    "현재 값": "오늘 숫자",
+    "읽는 법": "읽는 포인트",
+    "구간": "기간",
+    "한줄 판단": "핵심 요약",
+    "지금 볼 것": "바로 볼 점",
+    "긍정 시각": "좋게 보면",
+    "중립 시각": "중립적으로 보면",
+    "부정 시각": "조심해서 보면",
+    "날짜": "기준일",
+    "소스": "데이터 출처",
+    "성공률": "정상 수집 비율",
+    "평균 지연": "응답 속도",
+    "판단": "읽는 포인트",
+    "지표": "체크 지표",
+    "최근값": "지금 수치",
+    "1D 변화": "하루 변화",
+    "7D 변화": "일주일 변화",
+}
+
 
 def build_markdown_report(market_summary_md: str, theme_briefings_md: list) -> str:
     """리포트 재료들을 받아 하나의 통일된 마크다운 전문을 생성합니다."""
@@ -108,8 +140,9 @@ def _append_markdown_table(
 ) -> None:
     if not headers or not rows:
         return
-    lines.append("| " + " | ".join(headers) + " |")
-    lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+    aliased_headers = [_TABLE_HEADER_ALIASES.get(header, header) for header in headers]
+    lines.append("| " + " | ".join(aliased_headers) + " |")
+    lines.append("| " + " | ".join(["---"] * len(aliased_headers)) + " |")
     for row in rows:
         lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
     lines.append("")
@@ -354,19 +387,26 @@ def markdown_to_html(markdown_str: str) -> str:
     replacements = [
         (
             r"<h1>",
-            '<h1 style="color:#6a4f2b;border-bottom:2px solid #ddc7a4;padding-bottom:8px;margin:0 0 16px;font-size:24px;line-height:1.4;">',
+            (
+                f'<h1 style="color:{_PRIMARY_DARK};border-bottom:3px solid {_ACCENT_COLOR};'
+                f'padding-bottom:10px;margin:0 0 18px;font-size:24px;line-height:1.4;">'
+            ),
         ),
         (
             r"<h2>",
-            '<h2 style="color:#3b2f24;background:#f2eadb;padding:9px 12px;border-radius:10px;font-size:18px;margin:26px 0 12px;line-height:1.45;">',
+            (
+                f'<h2 style="color:{_PRIMARY_DARK};background:{_PRIMARY_TINT};padding:10px 12px;'
+                f'border-left:5px solid {_ACCENT_COLOR};border-radius:12px;font-size:18px;'
+                f'margin:26px 0 12px;line-height:1.45;">'
+            ),
         ),
         (
             r"<h3>",
-            '<h3 style="color:#5b4630;font-size:16px;margin:18px 0 10px;line-height:1.45;">',
+            f'<h3 style="color:{_PRIMARY_COLOR};font-size:16px;margin:18px 0 10px;line-height:1.45;">',
         ),
         (
             r"<p>",
-            '<p style="margin:0 0 14px;font-size:14px;line-height:1.68;color:#2b241d;">',
+            f'<p style="margin:0 0 14px;font-size:14px;line-height:1.68;color:{_TEXT_COLOR};">',
         ),
         (
             r"<ul>",
@@ -374,35 +414,51 @@ def markdown_to_html(markdown_str: str) -> str:
         ),
         (
             r"<li>",
-            '<li style="margin:0 0 8px;font-size:14px;line-height:1.65;color:#2b241d;">',
+            f'<li style="margin:0 0 8px;font-size:14px;line-height:1.65;color:{_TEXT_COLOR};">',
         ),
         (
             r"<blockquote>",
-            '<blockquote style="margin:14px 0;padding:12px 14px;background:#fbf6ea;border-left:4px solid #d7a94b;color:#58452e;border-radius:8px;">',
+            (
+                f'<blockquote style="margin:14px 0;padding:12px 14px;background:{_ACCENT_TINT};'
+                f'border-left:4px solid {_ACCENT_COLOR};color:{_PRIMARY_DARK};border-radius:10px;">'
+            ),
         ),
         (
             r"<table>",
-            '<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;margin:12px 0 16px;table-layout:fixed;">',
+            (
+                '<table role="presentation" cellspacing="0" cellpadding="0" border="0" '
+                'style="width:100%;border-collapse:collapse;margin:12px 0 16px;table-layout:fixed;">'
+            ),
         ),
         (
             r"<th>",
-            '<th style="background:#efe4d2;color:#4f3f2f;font-weight:700;font-size:13px;padding:10px 8px;border:1px solid #e3d5bf;text-align:left;vertical-align:top;">',
+            (
+                f'<th style="background:{_PRIMARY_COLOR};color:#ffffff;font-weight:700;font-size:13px;'
+                f'padding:10px 8px;border:1px solid {_CARD_BORDER};text-align:left;vertical-align:top;">'
+            ),
         ),
         (
             r"<td>",
-            '<td style="background:#fffdfa;font-size:13px;padding:10px 8px;border:1px solid #eadfcd;vertical-align:top;word-break:keep-all;line-height:1.55;">',
+            (
+                f'<td style="background:#ffffff;font-size:13px;padding:10px 8px;border:1px solid {_CARD_BORDER};'
+                f'vertical-align:top;word-break:keep-all;line-height:1.55;color:{_TEXT_COLOR};">'
+            ),
         ),
         (
             r"<hr ?/?>",
-            '<hr style="border:0;border-top:1px solid #e7dccd;margin:28px 0 18px;">',
+            f'<hr style="border:0;border-top:1px solid {_CARD_BORDER};margin:28px 0 18px;">',
         ),
         (
             r"<a href=",
-            '<a style="color:#8a5b22;text-decoration:none;" href=',
+            f'<a style="color:{_ACCENT_COLOR};text-decoration:none;font-weight:600;" href=',
         ),
         (
             r"<em>",
-            '<em style="color:#6f6253;">',
+            f'<em style="color:{_MUTED_TEXT};">',
+        ),
+        (
+            r"<strong>",
+            f'<strong style="color:{_PRIMARY_DARK};">',
         ),
     ]
     for pattern, replacement in replacements:
@@ -413,14 +469,14 @@ def markdown_to_html(markdown_str: str) -> str:
     <head>
     <meta charset="utf-8">
     <style>
-        body {{ margin: 0; background: #f6f1e8; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', Dotum, sans-serif; color: #2b241d; }}
+        body {{ margin: 0; background: #f7f2ff; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', Dotum, sans-serif; color: {_TEXT_COLOR}; }}
     </style>
     </head>
-    <body style="margin:0;background:#f6f1e8;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width:100%;background:#f6f1e8;">
+    <body style="margin:0;background:#f7f2ff;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width:100%;background:#f7f2ff;">
             <tr>
                 <td align="center" style="padding:24px 12px 40px;">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:860px;width:100%;background:#fffdfa;border:1px solid #e7dccd;border-radius:18px;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:860px;width:100%;background:#ffffff;border:1px solid {_CARD_BORDER};border-radius:18px;">
                         <tr>
                             <td style="padding:28px 24px;">
                                 {html_body}
