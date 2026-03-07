@@ -213,6 +213,43 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(failures[0]["source_id"], "sec_edgar")
         self.assertIn("503", failures[0]["detail"])
 
+    def test_connector_metric_daily_snapshots_keep_latest_value_per_day(self):
+        """metric point 일별 스냅샷은 마지막 timestamp 값을 유지한다."""
+        self.db.insert_connector_metric_point("fred", "fred:series_value_x100", 425.0, "2026-03-01T09:00:00")
+        self.db.insert_connector_metric_point("fred", "fred:series_value_x100", 430.0, "2026-03-01T15:00:00")
+        self.db.insert_connector_metric_point("fred", "fred:series_value_x100", 420.0, "2026-02-28T15:00:00")
+
+        rows = self.db.get_connector_metric_daily_snapshots(days=365)
+        self.assertEqual(rows[0]["day"], "2026-03-01")
+        self.assertEqual(rows[0]["metric_value"], 430.0)
+        self.assertEqual(rows[1]["day"], "2026-02-28")
+
+    def test_connector_metric_trends_calculate_1d_and_7d_changes(self):
+        """metric trend는 1D/7D 변화량과 변화율을 계산한다."""
+        samples = [
+            ("2026-03-07T15:00:00", 5.20),
+            ("2026-03-06T15:00:00", 5.10),
+            ("2026-03-01T15:00:00", 4.90),
+        ]
+        for timestamp, value in samples:
+            self.db.insert_connector_metric_point(
+                "fred",
+                "fred:series_value_x100",
+                value * 100,
+                timestamp,
+            )
+
+        trends = self.db.get_connector_metric_trends(days=365)
+        fred_trend = [row for row in trends if row["metric_key"] == "fred:series_value_x100"][0]
+
+        self.assertEqual(fred_trend["latest_day"], "2026-03-07")
+        self.assertEqual(fred_trend["latest_value"], 520.0)
+        self.assertEqual(fred_trend["prev_1d_value"], 510.0)
+        self.assertEqual(fred_trend["prev_7d_value"], 490.0)
+        self.assertEqual(fred_trend["delta_1d"], 10.0)
+        self.assertEqual(fred_trend["delta_7d"], 30.0)
+        self.assertAlmostEqual(fred_trend["pct_change_1d"], 0.0196, places=4)
+
     # --- 리포트 스냅샷 테스트 ---
 
     def test_insert_and_get_recent_report_snapshot(self):
