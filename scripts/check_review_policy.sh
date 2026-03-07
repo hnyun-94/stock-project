@@ -74,9 +74,12 @@ doc_satisfies_policy() {
   has_heading "$file" 'PM' &&
     has_heading "$file" 'TPM' &&
     has_heading "$file" '기획자' &&
+    has_heading "$file" '시니어 개발자' &&
     has_heading "$file" '개발자' &&
+    has_heading "$file" '품질 담당자' &&
     has_heading "$file" '신입개발자' &&
     has_heading "$file" '운영자' &&
+    has_heading "$file" '주식 전문가' &&
     grep -Eq '근거|이유' "$file" &&
     grep -Eq '종합 판단|최종 판단|판단' "$file"
 }
@@ -105,5 +108,5 @@ for file in $REVIEW_DOCS; do
 done
 
 echo "[review-policy] ERROR: 변경된 task/ 또는 done/ 문서에서 역할 리뷰/근거/판단 구조를 찾지 못했습니다." >&2
-echo "[review-policy] ERROR: 'PM, TPM, 기획자, 개발자, 신입개발자, 운영자'와 '근거 또는 이유', '종합 판단'을 포함하세요." >&2
+echo "[review-policy] ERROR: 'PM, TPM, 기획자, 시니어 개발자, 개발자, 품질 담당자, 신입개발자, 운영자, 주식 전문가'와 '근거 또는 이유', '종합 판단'을 포함하세요." >&2
 exit 1

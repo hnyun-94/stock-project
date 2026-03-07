@@ -23,7 +23,7 @@ description: "Create and merge PRs safely with gh CLI using --body-file, after p
 4. 커밋을 생성하고 원격 브랜치로 push합니다.
    - 최종 커밋 크기 검증은 `pre-push` 훅이 자동 수행합니다.
 5. PR 본문을 `.tmp/pr_body.md`로 작성합니다.
-   - PM/TPM/기획자/개발자/신입개발자/운영자 리뷰 섹션 필수
+   - PM/TPM/기획자/시니어 개발자/개발자/품질 담당자/신입개발자/운영자/주식 전문가 리뷰 섹션 필수
    - `critical`/`major`/`minor` 심각도와 조치 내용 포함
 6. `gh pr create --body-file`로 PR을 생성합니다.
 7. 머지 전 의사결정:
@@ -67,7 +67,17 @@ Implemented feature X.
 - Severity:
 - Action:
 
+### 시니어 개발자
+- Findings:
+- Severity:
+- Action:
+
 ### 개발자
+- Findings:
+- Severity:
+- Action:
+
+### 품질 담당자
 - Findings:
 - Severity:
 - Action:
@@ -78,6 +88,11 @@ Implemented feature X.
 - Action:
 
 ### 운영자
+- Findings:
+- Severity:
+- Action:
+
+### 주식 전문가
 - Findings:
 - Severity:
 - Action:

@@ -1,6 +1,6 @@
 ---
 name: pr-governance
-description: "Enforce feature-sliced PR workflow: commit size <=400 lines, multi-role PR review (PM/TPM/기획/개발/신입/운영), critical-issue handling, and merge/follow-up decision."
+description: "Enforce feature-sliced PR workflow: commit size <=400 lines, multi-role PR review (PM/TPM/기획/시니어개발/개발/품질/신입/운영/주식전문가), critical-issue handling, and merge/follow-up decision."
 ---
 
 # PR Governance Skill
@@ -23,13 +23,16 @@ description: "Enforce feature-sliced PR workflow: commit size <=400 lines, multi
    - 이 한도는 계획서 단계에서 미리 커밋 예산으로 쪼갭니다.
    - 실제 목표치는 `300~350줄 내외`로 잡아 여유를 둡니다.
    - 수동 `check_commit_size` 실행은 기본 필수가 아니며, 예산 초과가 의심될 때만 사용합니다.
-3. PR 본문에는 아래 6개 관점 리뷰를 모두 포함합니다.
+3. PR 본문에는 아래 9개 관점 리뷰를 모두 포함합니다.
    - PM
    - TPM
    - 기획자
+   - 시니어 개발자
    - 개발자
+   - 품질 담당자
    - 신입개발자
    - 운영자
+   - 주식 전문가
 4. 리뷰 이슈는 심각도(`critical`, `major`, `minor`)를 명시합니다.
 5. 치명적(`critical`) 이슈는 같은 PR에서 즉시 수정 후 재리뷰합니다.
 6. 비치명적 개선사항은 머지 후 후속 PR로 분리 가능합니다.
@@ -73,7 +76,17 @@ description: "Enforce feature-sliced PR workflow: commit size <=400 lines, multi
 - Severity:
 - Action:
 
+### 시니어 개발자
+- Findings:
+- Severity:
+- Action:
+
 ### 개발자
+- Findings:
+- Severity:
+- Action:
+
+### 품질 담당자
 - Findings:
 - Severity:
 - Action:
@@ -84,6 +97,11 @@ description: "Enforce feature-sliced PR workflow: commit size <=400 lines, multi
 - Action:
 
 ### 운영자
+- Findings:
+- Severity:
+- Action:
+
+### 주식 전문가
 - Findings:
 - Severity:
 - Action:
