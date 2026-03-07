@@ -20,6 +20,7 @@ import sys
 sys.modules['src.utils.logger'] = MagicMock()
 
 from src.models import NewsArticle, MarketIndex, CommunityPost, SearchTrend, User
+from src.utils.report_formatter import build_structured_markdown_report
 from src.utils.cache import TTLCache
 from src.utils.deduplicator import deduplicate_news
 
@@ -157,6 +158,25 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
             cache.set("nonexistent_key", crawled)
 
         self.assertIsNotNone(cache.get("nonexistent_key"))
+
+    def test_structured_report_formatter_renders_core_sections(self):
+        """구조화 리포트 payload가 주요 섹션을 모두 렌더링한다."""
+        markdown_text = build_structured_markdown_report(
+            {
+                "title": "🌤️ 리포트",
+                "subtitle": "요약",
+                "headline_changes": ["헤드라인 1"],
+                "recent_focus": ["포인트 1"],
+                "time_windows": [{"label": "1D", "title": "오늘", "bullets": ["요약 1"]}],
+                "theme_sections": [{"keyword": "AI", "points": ["테마 1"]}],
+                "holding_sections": [{"holding": "삼성전자", "stance": "유지", "summary": "근거", "action": "액션"}],
+                "long_term_plan": ["장기 1"],
+            }
+        )
+
+        self.assertIn("## 🧭 헤드라인 변화", markdown_text)
+        self.assertIn("## 💼 보유 종목별 인사이트", markdown_text)
+        self.assertIn("### 삼성전자", markdown_text)
 
 
 if __name__ == "__main__":
