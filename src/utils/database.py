@@ -79,6 +79,20 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_snapshot_timestamp
                 ON prediction_snapshots(timestamp);
 
+            CREATE TABLE IF NOT EXISTS report_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                user_name TEXT NOT NULL,
+                headline TEXT NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                report_snip TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_report_snapshot_user
+                ON report_snapshots(user_name);
+            CREATE INDEX IF NOT EXISTS idx_report_snapshot_timestamp
+                ON report_snapshots(timestamp);
+
             CREATE TABLE IF NOT EXISTS prompt_usage_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_name TEXT NOT NULL,
@@ -321,6 +335,67 @@ class Database:
                 rates[row["source_id"]] = round(success / total, 4)
         return rates
 
+    # ==========================================
+    # 리포트 스냅샷 메서드
+    # ==========================================
+
+    def insert_report_snapshot(
+        self,
+        user_name: str,
+        headline: str,
+        snapshot_json: str,
+        report_text: str = "",
+    ) -> None:
+        """사용자별 리포트 요약 스냅샷을 저장합니다."""
+        self._conn.execute(
+            (
+                "INSERT INTO report_snapshots "
+                "(timestamp, user_name, headline, snapshot_json, report_snip) "
+                "VALUES (?, ?, ?, ?, ?)"
+            ),
+            (
+                datetime.now().isoformat(),
+                user_name,
+                (headline or "")[:300],
+                (snapshot_json or "")[:8000],
+                (report_text or "")[:2000],
+            ),
+        )
+        self._conn.commit()
+
+    def get_recent_report_snapshots(
+        self,
+        user_name: str,
+        limit: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """특정 사용자의 최근 리포트 스냅샷을 최신순으로 조회합니다."""
+        cursor = self._conn.execute(
+            (
+                "SELECT * FROM report_snapshots "
+                "WHERE user_name = ? "
+                "ORDER BY timestamp DESC LIMIT ?"
+            ),
+            (user_name, limit),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_report_snapshots_since(
+        self,
+        user_name: str,
+        days: int = 7,
+    ) -> List[Dict[str, Any]]:
+        """특정 사용자의 최근 N일 리포트 스냅샷을 조회합니다."""
+        since = (datetime.now() - timedelta(days=days)).isoformat()
+        cursor = self._conn.execute(
+            (
+                "SELECT * FROM report_snapshots "
+                "WHERE user_name = ? AND timestamp >= ? "
+                "ORDER BY timestamp DESC"
+            ),
+            (user_name, since),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
 
 def get_db(db_path: str = DB_PATH) -> Database:
     """Database 싱글톤 인스턴스를 반환합니다.
@@ -339,3 +414,14 @@ def get_db(db_path: str = DB_PATH) -> Database:
             if _db_instance is None:
                 _db_instance = Database(db_path)
     return _db_instance
+
+
+def close_db() -> None:
+    """전역 Database 인스턴스를 안전하게 종료합니다."""
+    global _db_instance
+    if _db_instance is None:
+        return
+    with _lock:
+        if _db_instance is not None:
+            _db_instance.close()
+            _db_instance = None
