@@ -118,6 +118,7 @@
 ## 🚀 Phase 7 백로그 (2026-03-07 동기화)
 
 상세 실행 계획: `task/next_steps_roadmap.md`
+완료 작업 기준선: `task/completed_work_report.md`
 
 ### P0 - 운영 안정성
 
