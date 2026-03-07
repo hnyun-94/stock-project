@@ -1,6 +1,6 @@
 ---
 name: review-driven-execution
-description: "Use when the user asks for PM/TPM/기획자/개발자/신입개발자/운영자 multi-role review, a written plan, parallel work streams, interim logging, and implementation after review."
+description: "Use when the user asks for PM/TPM/기획자/시니어 개발자/개발자/품질 담당자/신입개발자/운영자/주식 전문가 multi-role review, a written plan, parallel work streams, interim logging, and implementation after review."
 ---
 
 # Review-Driven Execution Skill
@@ -12,7 +12,7 @@ description: "Use when the user asks for PM/TPM/기획자/개발자/신입개발
 
 다음 표현이 보이면 사용합니다.
 
-- "PM, TPM, 기획자, 개발자, 신입개발자, 운영자 관점으로 검토"
+- "PM, TPM, 기획자, 시니어 개발자, 개발자, 품질 담당자, 신입개발자, 운영자, 주식 전문가 관점으로 검토"
 - "계획서 작성 후 개발"
 - "병렬로 진행"
 - "중간 결과를 남기고 이어서 가능하게"
@@ -29,9 +29,12 @@ description: "Use when the user asks for PM/TPM/기획자/개발자/신입개발
    - PM: 사용자 가치, 범위, 우선순위
    - TPM: 런타임/의존성/배포 리스크
    - 기획자: 정보 구조, UX, 수용 기준
+   - 시니어 개발자: 아키텍처 적합성, 기술 부채, 대안 비교
    - 개발자: 모듈 경계, 테스트 가능성, 변경 범위
+   - 품질 담당자: 회귀 위험, 테스트 전략, 검증 누락
    - 신입개발자: 이해 가능성, 온보딩 난도
    - 운영자: 관측성, 장애 복구, 안전성
+   - 주식 전문가: 시장 데이터 해석 타당성, 투자 정보 표현 적절성, 도메인 왜곡 여부
 3. 최소 3회 검토 라운드를 수행합니다.
    - 1차: 요구사항 해석, 범위, 가치, 성공 기준 점검
    - 2차: 기술 선택, 런타임 영향, 운영/보안 리스크 점검
