@@ -102,6 +102,13 @@ def _append_card(
             lines.append(f"- {item}")
         lines.append("")
 
+    related_links = card.get("related_links", [])
+    if related_links:
+        lines.append("**관련 기사**")
+        for link in related_links:
+            lines.append(f"- [{link.get('label', '관련 기사')}]({link.get('url', '#')})")
+        lines.append("")
+
     lines.append("**세 가지 시각**")
     if card.get("positive_view"):
         lines.append(f"- 긍정: {card['positive_view']}")
@@ -188,6 +195,14 @@ def _append_compact_brief(
         lines.append(f"- 왜 중요한가: {card['why_it_matters']}")
     if card.get("watch_points"):
         lines.append(f"- 지금 볼 것: {', '.join(card['watch_points'][:3])}")
+    if card.get("related_links"):
+        lines.append(
+            "- 관련 기사: "
+            + ", ".join(
+                f"[{link.get('label', '관련 기사')}]({link.get('url', '#')})"
+                for link in card["related_links"][:2]
+            )
+        )
     if card.get("outlook"):
         lines.append(f"- 다음 체크포인트: {card['outlook']}")
     if card.get("action"):
@@ -211,6 +226,11 @@ def _append_decision_section(lines: list[str], report_payload: dict) -> None:
     if quick_take:
         lines.append(f"> 한줄 결론: {quick_take.get('summary', '')}")
         lines.append("")
+        if quick_take.get("related_links"):
+            lines.append("**관련 기사**")
+            for link in quick_take["related_links"][:2]:
+                lines.append(f"- [{link.get('label', '관련 기사')}]({link.get('url', '#')})")
+            lines.append("")
 
     decision_tiles = report_payload.get("decision_tiles", [])
     if decision_tiles:
@@ -282,6 +302,11 @@ def _append_time_window_digest(lines: list[str], time_windows: list[dict], sessi
             f"> 지금 구간 공통 이슈: {session_issue_section.get('summary', '')}"
         )
         lines.append("")
+        if session_issue_section.get("related_links"):
+            lines.append("**관련 기사**")
+            for link in session_issue_section["related_links"][:2]:
+                lines.append(f"- [{link.get('label', '관련 기사')}]({link.get('url', '#')})")
+            lines.append("")
 
 
 def build_structured_markdown_report(report_payload: dict) -> str:
