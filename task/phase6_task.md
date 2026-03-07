@@ -12,6 +12,7 @@
 
 - 본 문서의 Task 6.1~6.21은 코드베이스 기준 모두 완료되었습니다.
 - 실제 구현 이력은 `todo/todo.md`, `logging/2026-03-07.md`, PR #20~#25를 기준으로 추적합니다.
+- 완료 작업 기준선 요약은 `task/completed_work_report.md`를 사용합니다.
 
 ## 1. 백엔드/인프라 엔지니어 (Backend / Infrastructure Engineer)
 
