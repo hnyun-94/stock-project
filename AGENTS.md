@@ -34,6 +34,7 @@
 - Git hook은 `.githooks/`를 사용하며 `pre-push`에서 표준 품질 게이트(`tests/services/`, `tests/test_e2e_dryrun.py`)를 검증합니다.
 - `pre-push`에서 **커밋당 변경량(추가+삭제) 400줄 초과 여부**를 함께 검증합니다.
 - `pre-push`에서 `scripts/check_context_sync.sh`를 통해 문맥 동기화 경고(`task/`, `todo/`, `done/`, `README.md`, `AGENTS.md`)와 런타임 상태 smoke check를 함께 수행합니다.
+- `pre-push`에서 `scripts/check_review_policy.sh`로 역할별 검토/근거/판단 문서화가 누락되지 않았는지 검사합니다.
 - `pre-push`에서 `scripts/check_git_hygiene.sh`로 금지 경로, 절대 경로, 실제 이메일 노출 여부를 검사합니다.
 - `pre-push` 품질 게이트/커밋 크기 검증은 우회하지 않습니다. (skip 환경변수 사용 금지)
 - `core.hooksPath`는 반드시 `.githooks`로 설정합니다: `git config core.hooksPath .githooks`
@@ -67,10 +68,30 @@
 ### Recurring User Preferences (Structured)
 
 - 사용자가 큰 작업을 요청하거나 요구사항이 엮여 있으면, 기본적으로 **PM / TPM / 기획자 / 개발자 / 신입개발자 / 운영자** 관점 리뷰를 먼저 수행합니다.
+- 모든 비단순 작업은 최소 3회 이상 검토합니다.
+  - 1차: 요구사항/가치/범위 검토
+  - 2차: 기술/런타임/운영 리스크 검토
+  - 3차: 검증 결과/잔여 리스크/대안 기각 사유 검토
 - 리뷰 결과는 `task/*.md` 계획서로 구조화하고, 구현 전 병렬 스트림/우선순위/수용 기준을 명시합니다.
+- 최종 답변과 공유 문서에는 가능한 한 아래 항목을 명시합니다.
+  - 무엇을 선택했는지
+  - 왜 그렇게 판단했는지
+  - 어떤 근거로 판단했는지
+  - 어떤 대안을 검토했고 왜 기각했는지
+  - 남은 리스크가 무엇인지
 - 작업 도중 중단될 수 있는 변경은 로컬 `logging/YYYY-MM-DD.md`에 중간 결과를 남기되, Git으로 공유가 필요한 내용은 `task/`, `done/`, `README.md`, `AGENTS.md` 같은 정제 문서로 승격합니다.
 - GitHub Actions, SQLite, 캐시, workflow, env 기반 상태 저장이 엮인 변경은 항상 **런타임 아키텍처 검토 + health-check**까지 포함합니다.
 - 같은 요구가 반복되면 ad-hoc 대응으로 끝내지 말고 `AGENTS.md`, `.agents/skills/`, `.githooks/`, `scripts/`로 승격하여 재사용 가능하게 만듭니다.
+
+### Evidence-Based Review Policy
+
+- 이 프로젝트에서 Codex는 **검토 없는 즉흥 구현**을 하지 않습니다.
+- 사용자의 질문/요청에 대한 답변도 가능하면 검토 결과와 판단 근거가 보이도록 작성합니다.
+- 구현성 변경이 있으면 `task/` 또는 `done/` 문서에 최소한 다음이 남아 있어야 합니다.
+  - 역할별 검토
+  - 근거 또는 이유
+  - 종합 판단
+- 위 규칙은 일시적 요청이 아니라 프로젝트 상시 규칙으로 취급합니다.
 
 ### Git Hygiene Policy
 
@@ -177,6 +198,9 @@ scripts/check_context_sync.sh --range origin/master..HEAD
 
 # Git 추적 대상 위생 점검
 sh scripts/check_git_hygiene.sh
+
+# 역할별 리뷰/근거 문서화 점검
+sh scripts/check_review_policy.sh --range origin/master..HEAD
 
 # Git hook 경로 확인
 git config --get core.hooksPath

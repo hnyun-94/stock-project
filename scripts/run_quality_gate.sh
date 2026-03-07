@@ -79,6 +79,9 @@ sh scripts/check_git_hygiene.sh
 echo "[quality-gate] context sync"
 sh scripts/check_context_sync.sh --range "$RANGE"
 
+echo "[quality-gate] review policy"
+sh scripts/check_review_policy.sh --range "$RANGE"
+
 echo "[quality-gate] pytest"
 if command -v uv >/dev/null 2>&1; then
   UV_CACHE_DIR="${UV_CACHE_DIR:-.tmp/.uv-cache}" \
