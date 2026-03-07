@@ -8,6 +8,11 @@
 
 ---
 
+## ✅ 동기화 상태 (2026-03-07)
+
+- 본 문서의 Task 6.1~6.21은 코드베이스 기준 모두 완료되었습니다.
+- 실제 구현 이력은 `todo/todo.md`, `logging/2026-03-07.md`, PR #20~#25를 기준으로 추적합니다.
+
 ## 1. 백엔드/인프라 엔지니어 (Backend / Infrastructure Engineer)
 
 > **목표:** "불필요한 리소스 반복 생성과 순차 처리 병목을 제거하고, Docker 환경에서도 안정적으로 동작하는 인프라를 구축한다."
@@ -22,7 +27,7 @@
 
 ### ✅ 진행되어야 할 Task 목록
 
-- [ ] **Task 6.1: aiohttp ClientSession 싱글톤 도입** `[REQ-P01]`
+- [x] **Task 6.1: aiohttp ClientSession 싱글톤 도입** ✅ 완료 `[REQ-P01]`
   - **신규 파일**: `src/crawlers/http_client.py` 생성
     - `get_session()`: 글로벌 싱글톤 ClientSession 반환 (닫혔으면 자동 재생성)
     - `close_session()`: 파이프라인 종료 시 세션 해제
@@ -35,7 +40,7 @@
   - **브랜치명**: `feature/http-session-pooling`
   - **예상 작업량**: 약 1시간
 
-- [ ] **Task 6.2: 키워드 뉴스 크롤링 완전 병렬화** `[REQ-P02]`
+- [x] **Task 6.2: 키워드 뉴스 크롤링 완전 병렬화** ✅ 완료 `[REQ-P02]`
   - **수정 파일**: `main.py` (110~121번 라인 영역)
   - **수정 내용**:
     - 기존 `for kw in keywords_to_search:` 순차 루프를 제거
@@ -45,7 +50,7 @@
   - **브랜치명**: `perf/parallel-keyword-crawling`
   - **예상 작업량**: 약 30분
 
-- [ ] **Task 6.3: Gemini 클라이언트 싱글톤 + 데드 코드 제거** `[REQ-P03]`
+- [x] **Task 6.3: Gemini 클라이언트 싱글톤 + 데드 코드 제거** ✅ 완료 `[REQ-P03]`
   - **수정 파일**: `src/services/ai_summarizer.py`
   - **수정 내용**:
     - `_get_client()` 함수를 모듈 레벨 변수 `_client`를 활용한 싱글톤 패턴으로 변경
@@ -53,7 +58,7 @@
   - **브랜치명**: `refactor/gemini-client-singleton`
   - **예상 작업량**: 약 15분
 
-- [ ] **Task 6.4: BrowserPool 자원 해제 + 세션 정리 보장** `[REQ-P04]`
+- [x] **Task 6.4: BrowserPool 자원 해제 + 세션 정리 보장** ✅ 완료 `[REQ-P04]`
   - **수정 파일**: `main.py`
   - **수정 내용**:
     - `run_pipeline()` 함수의 `except` 블록 뒤에 `finally` 블록 추가
@@ -61,7 +66,7 @@
   - **브랜치명**: `fix/resource-cleanup`
   - **예상 작업량**: 약 15분
 
-- [ ] **Task 6.5: Docker Compose 환경 변수 일원화** `[REQ-Q04]`
+- [x] **Task 6.5: Docker Compose 환경 변수 일원화** ✅ 완료 `[REQ-Q04]`
   - **수정 파일**: `docker-compose.yml`
   - **수정 내용**:
     - 두 서비스 모두에 `env_file: - .env` 추가
@@ -83,7 +88,7 @@
 
 ### ✅ 진행되어야 할 Task 목록
 
-- [ ] **Task 6.6: 뉴스 본문 리드 문단 수집** `[REQ-F01]`
+- [x] **Task 6.6: 뉴스 본문 리드 문단 수집** ✅ 완료 `[REQ-F01]`
   - **신규 파일**: `src/crawlers/article_parser.py`
     - `async def extract_lead_paragraph(url: str, max_sentences: int = 3) -> str` 구현
     - 기사 URL에 접속하여 `<article>` 또는 `<div class="article_body">` 등에서 첫 2~3문장 추출
@@ -95,7 +100,7 @@
   - **브랜치명**: `feature/news-body-summary`
   - **예상 작업량**: 약 3시간
 
-- [ ] **Task 6.7: 감정 지표(Sentiment Score) 도입** `[REQ-F04]`
+- [x] **Task 6.7: 감정 지표(Sentiment Score) 도입** ✅ 완료 `[REQ-F04]`
   - **수정 파일**: `ai_summarizer.py`
     - `async def analyze_community_sentiment(posts: list) -> dict` 함수 추가
     - Gemini에 커뮤니티 제목 목록을 전달하여 0~100 감정 점수 + 한줄 해석을 JSON으로 반환받음
@@ -107,7 +112,7 @@
   - **브랜치명**: `feature/sentiment-score`
   - **예상 작업량**: 약 2시간
 
-- [ ] **Task 6.8: 별점 기반 자동 프롬프트 튜닝 루프** `[REQ-F06]`
+- [x] **Task 6.8: 별점 기반 자동 프롬프트 튜닝 루프** ✅ 완료 `[REQ-F06]`
   - **수정 파일**: `feedback_manager.py`
     - `def get_average_score(window_days: int = 7) -> float` 함수 추가
     - 최근 N일간 평균 별점 계산
@@ -130,7 +135,7 @@
 
 ### ✅ 진행되어야 할 Task 목록
 
-- [ ] **Task 6.9: 뉴스 중복 제거 (Deduplication)** `[REQ-F02]`
+- [x] **Task 6.9: 뉴스 중복 제거 (Deduplication)** ✅ 완료 `[REQ-F02]`
   - **신규 파일**: `src/utils/deduplicator.py`
     - `def deduplicate_news(articles: list, threshold: float = 0.85) -> list` 구현
     - `difflib.SequenceMatcher`를 사용한 제목 유사도 비교
@@ -141,7 +146,7 @@
   - **브랜치명**: `feature/news-deduplication`
   - **예상 작업량**: 약 1시간
 
-- [ ] **Task 6.10: 크롤링 결과 인메모리 캐싱** `[REQ-F03]`
+- [x] **Task 6.10: 크롤링 결과 인메모리 캐싱** ✅ 완료 `[REQ-F03]`
   - **신규 파일**: `src/utils/cache.py`
     - `class TTLCache` 구현 (기본 TTL 30분)
     - `get(key)` / `set(key, value)` 메서드
@@ -153,7 +158,7 @@
   - **브랜치명**: `feature/crawling-cache`
   - **예상 작업량**: 약 1시간
 
-- [ ] **Task 6.11: 백테스팅 채점 정량화** `[REQ-F05]`
+- [x] **Task 6.11: 백테스팅 채점 정량화** ✅ 완료 `[REQ-F05]`
   - **수정 파일**: `src/services/backtesting_scorer.py`
     - `async def fetch_closing_price(stock_name: str) -> float` 추가 (네이버 금융 종가 크롤링)
     - `def calculate_accuracy_score(snapshots: list, actual_prices: dict) -> dict` 추가
@@ -162,7 +167,7 @@
   - **브랜치명**: `feature/quantitative-backtesting`
   - **예상 작업량**: 약 3시간
 
-- [ ] **Task 6.12: 프롬프트 A/B 테스트 시스템** `[REQ-F07]`
+- [x] **Task 6.12: 프롬프트 A/B 테스트 시스템** ✅ 완료 `[REQ-F07]`
   - **수정 파일**: Notion 프롬프트 DB 스키마에 `Version`, `Variant` 필드 추가
   - **수정 파일**: `prompt_manager.py`
     - 동일 Title의 프롬프트가 여러 Variant로 존재할 경우 랜덤 선택
@@ -186,7 +191,7 @@
 
 ### ✅ 진행되어야 할 Task 목록
 
-- [ ] **Task 6.13: 피드백 링크 HMAC 서명 연동 (치명적 버그 수정)** `[REQ-Q01]` ← 🚨 최우선
+- [x] **Task 6.13: 피드백 링크 HMAC 서명 연동 (치명적 버그 수정)** ✅ 완료 `[REQ-Q01]` ← 🚨 최우선
   - **수정 파일**: `src/services/feedback_manager.py`
     - `generate_feedback_link()` 함수에 `hmac`, `hashlib` 임포트 추가
     - `WEBHOOK_SECRET` 기반 HMAC-SHA256 서명 생성
@@ -199,7 +204,7 @@
   - **브랜치명**: `fix/feedback-signature-bug`
   - **예상 작업량**: 약 1시간
 
-- [ ] **Task 6.14: 과도한 타임아웃 일괄 축소** `[REQ-Q02]` ← 범위 확대
+- [x] **Task 6.14: 과도한 타임아웃 일괄 축소** ✅ 완료 `[REQ-Q02]` ← 범위 확대
   - **수정 파일**: `src/services/user_manager.py` (37번 라인)
     - `timeout=300.0` → `timeout=30.0`
   - **수정 파일**: `src/services/prompt_manager.py` (29번 라인)
@@ -211,14 +216,14 @@
   - **브랜치명**: `fix/excessive-timeouts`
   - **예상 작업량**: 약 15분
 
-- [ ] **Task 6.15: WEBHOOK_SECRET 기본값 보안 강화** `[REQ-Q05]`
+- [x] **Task 6.15: WEBHOOK_SECRET 기본값 보안 강화** ✅ 완료 `[REQ-Q05]`
   - **수정 파일**: `src/apps/feedback_server.py` (25번 라인)
     - `WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "default_secret_key")` →
       `WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")` + 미설정 시 `RuntimeError` 발생
   - **브랜치명**: `fix/webhook-secret-guard`
   - **예상 작업량**: 약 10분
 
-- [ ] **Task 6.16: 루트 디렉토리 산재 파일 정리** `[REQ-Q06]`
+- [x] **Task 6.16: 루트 디렉토리 산재 파일 정리** ✅ 완료 `[REQ-Q06]`
   - **이동 대상 파일**: `test_async_gemini.py`, `test_db.py`, `test_notion.py`, `test_gemini.py`, `test_gemini2.py`, `add_columns.py`, `check_notion.py`, `update_notion_db.py`, `update_notion_schema.py`, `update_notion_user.py`
   - **수행 내용**:
     - `scripts/` 디렉토리 생성
@@ -227,7 +232,7 @@
   - **브랜치명**: `chore/cleanup-root-scripts`
   - **예상 작업량**: 약 20분
 
-- [ ] **Task 6.17: 서비스 레이어 단위 테스트 추가** `[REQ-Q03]`
+- [x] **Task 6.17: 서비스 레이어 단위 테스트 추가** ✅ 완료 `[REQ-Q03]`
   - **신규 디렉토리**: `tests/services/`
   - **신규 파일**:
     - `tests/services/test_ai_summarizer.py`: Gemini API Mock + 프롬프트 생성 검증
@@ -237,7 +242,7 @@
   - **브랜치명**: `test/service-layer-tests`
   - **예상 작업량**: 약 3시간
 
-- [ ] **Task 6.18: E2E 파이프라인 드라이런 테스트** `[REQ-Q08]`
+- [x] **Task 6.18: E2E 파이프라인 드라이런 테스트** ✅ 완료 `[REQ-Q08]`
   - **신규 파일**: `tests/test_pipeline_e2e.py`
     - 크롤러/AI/발송을 모두 Mock으로 대체
     - `run_pipeline()` 전체 흐름이 정상 완료되는지 검증
@@ -280,7 +285,7 @@
 
 ## 📋 Gap Analysis 보완 Task (교차 검증에서 추가 발견)
 
-- [ ] **Task 6.19: Gemini Batch 호출 도입** `[REQ-P05]`
+- [x] **Task 6.19: Gemini Batch 호출 도입** ✅ 완료 `[REQ-P05]`
   - **수정 파일**: `src/services/ai_summarizer.py`
     - `async def generate_multi_theme_briefing(themes: list[dict]) -> dict` 함수 추가
     - 여러 테마를 하나의 프롬프트로 통합하여 1회 API 호출로 처리
@@ -290,7 +295,7 @@
   - **브랜치명**: `perf/gemini-batch-call`
   - **예상 작업량**: 약 2시간
 
-- [ ] **Task 6.20: JSON → SQLite 마이그레이션** `[REQ-P06]`
+- [x] **Task 6.20: JSON → SQLite 마이그레이션** ✅ 완료 `[REQ-P06]`
   - **신규 파일**: `src/utils/database.py`
     - `init_db()`: `predictions`, `feedback` 테이블 생성
     - `insert_prediction()`, `insert_feedback()`, `get_recent_feedbacks()` 등 CRUD 함수
@@ -303,7 +308,7 @@
   - **브랜치명**: `refactor/json-to-sqlite`
   - **예상 작업량**: 약 3시간
 
-- [ ] **Task 6.21: 동기 Notion 호출 비동기 전환** `[REQ-Q07]`
+- [x] **Task 6.21: 동기 Notion 호출 비동기 전환** ✅ 완료 `[REQ-Q07]`
   - **수정 파일**: `main.py`
     - `fetch_prompts_from_notion()` → `await asyncio.to_thread(fetch_prompts_from_notion)`
     - `users = fetch_active_users()` → `users = await asyncio.to_thread(fetch_active_users)`
@@ -315,4 +320,4 @@
 _작성일: 2026-03-02_
 _요구사항 상세: `requirements/04_phase6_optimization_requirements.md`_  
 _체크리스트: `todo/todo.md`_
-_갱신일: 2026-03-02 | Gap Analysis 교차 검증 반영 (Task 6.19~6.21 추가, Task 6.1/6.14 보정)_
+_갱신일: 2026-03-07 | Task 6.1~6.21 완료 상태 동기화 (PR #20~#25 포함)_
