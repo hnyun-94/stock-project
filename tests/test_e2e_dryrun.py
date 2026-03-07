@@ -187,6 +187,7 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                     "details": ["근거 1"],
                     "why_it_matters": "왜 중요한가",
                     "watch_points": ["수급", "환율"],
+                    "related_links": [{"label": "시장 기사", "url": "https://news.example.com/market"}],
                     "positive_view": "긍정",
                     "neutral_view": "중립",
                     "negative_view": "부정",
@@ -212,6 +213,7 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                         "details": ["근거 1"],
                         "why_it_matters": "왜 중요한가",
                         "watch_points": ["외국인 수급"],
+                        "related_links": [{"label": "장중 기사", "url": "https://news.example.com/day"}],
                         "positive_view": "긍정",
                         "neutral_view": "중립",
                         "negative_view": "부정",
@@ -250,6 +252,7 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                         "details": ["테마 근거"],
                         "why_it_matters": "왜 중요한가",
                         "watch_points": ["HBM", "고객사 CAPEX"],
+                        "related_links": [{"label": "AI 기사", "url": "https://news.example.com/ai"}],
                         "positive_view": "긍정",
                         "neutral_view": "중립",
                         "negative_view": "부정",
@@ -264,6 +267,7 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                         "details": ["뉴스 근거"],
                         "why_it_matters": "왜 중요한가",
                         "watch_points": ["HBM 납품 확대"],
+                        "related_links": [{"label": "삼성 기사", "url": "https://news.example.com/samsung"}],
                         "positive_view": "긍정",
                         "neutral_view": "중립",
                         "negative_view": "부정",
@@ -302,6 +306,8 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("### 삼성전자", markdown_text)
         self.assertIn("| 기준일 | 데이터 출처 | 정상 수집 비율 | 응답 속도 | 읽는 포인트 |", markdown_text)
         self.assertIn("| 체크 지표 | 지금 수치 | 하루 변화 | 일주일 변화 |", markdown_text)
+        self.assertIn("[시장 기사](https://news.example.com/market)", markdown_text)
+        self.assertIn("[삼성 기사](https://news.example.com/samsung)", markdown_text)
 
     def test_markdown_to_html_inlines_email_styles(self):
         html_text = markdown_to_html("# 제목\n\n> 요약\n\n| 항목 | 값 |\n| --- | --- |\n| KOSPI | 2600 |")
@@ -311,6 +317,7 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("<body style=", html_text)
         self.assertIn("#845ec2", html_text)
         self.assertIn("#ff6f91", html_text)
+        self.assertIn("href=\"https://example.com\"", markdown_to_html("[기사](https://example.com)"))
 
 
 if __name__ == "__main__":

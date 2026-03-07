@@ -225,6 +225,24 @@ def _clean_text_items(items: Iterable[str], limit: int = 3) -> List[str]:
     return cleaned
 
 
+def _build_related_links(
+    news_items: Iterable[NewsArticle],
+    limit: int = 2,
+) -> List[Dict[str, str]]:
+    links: List[Dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for item in news_items:
+        url = str(item.link or "").strip()
+        label = _truncate_text(item.title or "", 90)
+        if not url or not label or _is_low_signal_text(label) or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        links.append({"label": label, "url": url})
+        if len(links) >= limit:
+            break
+    return links
+
+
 def extract_key_points(markdown_text: str, max_items: int = 3) -> List[str]:
     """자유서술형 Markdown에서 짧은 핵심 bullet을 추출합니다."""
     if not markdown_text:
@@ -967,6 +985,7 @@ def _build_card(
     stance: str = "",
     why_it_matters: str = "",
     watch_points: Optional[Sequence[str]] = None,
+    related_links: Optional[Sequence[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     cleaned_details = _clean_text_items(details, limit=3)
     return {
@@ -984,21 +1003,32 @@ def _build_card(
         "outlook": _truncate_text(outlook, 150),
         "action": _truncate_text(action, 140) if action else "",
         "stance": stance,
+        "related_links": [
+            {
+                "label": _truncate_text(str(link.get("label") or ""), 90),
+                "url": str(link.get("url") or "").strip(),
+            }
+            for link in list(related_links or [])
+            if str(link.get("label") or "").strip() and str(link.get("url") or "").strip()
+        ][:2],
     }
 
 
 def _build_quick_take_card(
     market_points: Sequence[str],
     market_indices: Sequence[MarketIndex],
+    market_news: Sequence[NewsArticle],
     focus_keywords: Sequence[str],
     sentiment_score: int,
     market_regime: str,
 ) -> Dict[str, Any]:
     support, risk = _pick_primary_market_forces(market_points, focus_keywords)
+    signal_news = _signal_news_items(market_news, limit=2)
     joined_context = " ".join(
         list(market_points)
         + list(focus_keywords)
         + [f"{item.name} {item.investor_summary or ''}" for item in list(market_indices)[:2]]
+        + [item.title for item in signal_news]
     )
     why_it_matters = _describe_why_it_matters("시장", joined_context)
     summary = (
@@ -1044,6 +1074,7 @@ def _build_quick_take_card(
         ),
         why_it_matters=why_it_matters,
         watch_points=watch_points or _split_watch_points(_describe_monitor_points(joined_context)),
+        related_links=_build_related_links(signal_news, limit=2),
     )
 
 
@@ -1090,6 +1121,7 @@ def _build_session_issue_card(
             ),
             why_it_matters=_describe_why_it_matters(label, joined_context),
             watch_points=_split_watch_points(_describe_monitor_points(joined_context)),
+            related_links=_build_related_links(signal_news, limit=2),
         ),
     }
 
@@ -1122,19 +1154,23 @@ def _build_recent_window_card(
         outlook=_truncate_text(f"현재 1H 톤은 {_tone_label(score)}입니다. {outlook}", 120),
         why_it_matters=_describe_why_it_matters("최근 동향", joined_context),
         watch_points=_split_watch_points(_describe_monitor_points(joined_context)),
+        related_links=_build_related_links(signal_news, limit=2),
     )
 
 
 def _build_daily_window_card(
     *,
     market_indices: Sequence[MarketIndex],
+    market_news: Sequence[NewsArticle],
     market_points: Sequence[str],
     sentiment_score: int,
 ) -> Dict[str, Any]:
     first_index = market_indices[0] if market_indices else None
+    signal_news = _signal_news_items(market_news, limit=2)
     joined_context = " ".join(
         list(market_points)
         + [f"{item.name} {item.value} {item.investor_summary}" for item in list(market_indices)[:3]]
+        + [item.title for item in signal_news]
     )
     summary = (
         f"오늘 장은 {first_index.name if first_index else '주요 지수'}보다도 수급과 뉴스 해석이 더 중요했던 날로, "
@@ -1158,6 +1194,7 @@ def _build_daily_window_card(
         outlook=outlook,
         why_it_matters=_describe_why_it_matters("오늘 장", joined_context),
         watch_points=_split_watch_points(_describe_monitor_points(joined_context)),
+        related_links=_build_related_links(signal_news, limit=2),
     )
 
 
@@ -1318,6 +1355,7 @@ def _build_theme_cards(
                     ),
                     why_it_matters=_describe_why_it_matters(keyword, joined_context),
                     watch_points=_split_watch_points(_describe_monitor_points(joined_context)),
+                    related_links=_build_related_links(news_items, limit=2),
                 ),
             }
         )
@@ -1384,6 +1422,7 @@ def _build_holding_cards(
                         holding,
                         _split_watch_points(_describe_monitor_points(joined_context)),
                     ),
+                    related_links=_build_related_links(news_items, limit=2),
                 ),
             }
         )
@@ -1646,6 +1685,7 @@ def build_report_payload(
     quick_take = _build_quick_take_card(
         market_points=market_points,
         market_indices=market_indices,
+        market_news=market_news,
         focus_keywords=focus_keywords,
         sentiment_score=sentiment_score,
         market_regime=market_regime,
@@ -1656,6 +1696,7 @@ def build_report_payload(
     )
     daily_window = _build_daily_window_card(
         market_indices=market_indices,
+        market_news=market_news,
         market_points=market_points,
         sentiment_score=sentiment_score,
     )
