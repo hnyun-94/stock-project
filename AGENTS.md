@@ -27,6 +27,7 @@
 - **`codex-session-setup`**: 프로젝트 관리 문서 로딩 + 상태 점검 + 기준선 테스트를 수행하는 스킬
 - **`review-driven-execution`**: PM/TPM/기획/개발/신입/운영 멀티롤 리뷰, 계획서 작성, 병렬 스트림 분리, 중간 로그 기록 후 구현하는 스킬
 - **`runtime-architecture-review`**: GitHub Actions, SQLite, 캐시, workflow, 런타임 상태 저장/복구 구조를 검토하고 health-check까지 반영하는 스킬
+- **`command-permission-governance`**: 승인 피로를 줄이기 위한 명령 위험도 분류, wrapper script 도입, 권한 정책 구조화 스킬
 
 ### 3. Hooks & Automations
 
@@ -69,6 +70,34 @@
 - 작업 도중 중단될 수 있는 변경은 `logging/YYYY-MM-DD.md`에 중간 결과와 검증 상태를 남겨 재개 가능 상태를 유지합니다.
 - GitHub Actions, SQLite, 캐시, workflow, env 기반 상태 저장이 엮인 변경은 항상 **런타임 아키텍처 검토 + health-check**까지 포함합니다.
 - 같은 요구가 반복되면 ad-hoc 대응으로 끝내지 말고 `AGENTS.md`, `.agents/skills/`, `.githooks/`, `scripts/`로 승격하여 재사용 가능하게 만듭니다.
+
+### Command Permission Policy
+
+이 프로젝트는 live secret(`.env`), 외부 발송, Notion/GitHub write 권한이 함께 있으므로 승인 정책을 무턱대고 완화하지 않습니다.
+
+- **Safe / 기본 자동 실행 대상**
+  - `scripts/session_bootstrap.sh`
+  - `scripts/run_quality_gate.sh --range origin/master..HEAD`
+  - `rg`, `sed`, `cat`, `ls`, `git status`, `git branch`, `git config --get core.hooksPath`
+  - `python -m py_compile ...`
+  - `scripts/check_commit_size.sh`, `scripts/check_context_sync.sh`, `scripts/check_runtime_state.py`
+- **Caution / 조건부 사용**
+  - `uv sync --frozen`
+  - `git switch -c`, `git add`, `git commit`, `git push -u origin`
+  - `gh pr create --body-file`, `gh pr view`, `gh pr merge --squash --delete-branch`
+  - 위 명령은 품질 게이트 통과 후 사용하고, hang 방지 규칙을 지킵니다.
+- **Always Review / 항상 재확인**
+  - `.env`, secret, credential, mail account, webhook secret 관련 명령
+  - `uv run python -m src.main` 같은 실제 외부 호출/발송 실행
+  - `uv run python -m src.apps.feedback_server`, `docker-compose up` 같은 서버/컨테이너 실행
+  - `scripts/update_notion_*`, `scripts/provision_prompt_db.py`, schema/data mutation
+  - `rm`, `git reset --hard`, `git checkout --`, 대량 삭제/복구
+
+판단 원칙:
+
+- 승인 피로는 **안전한 명령군을 번들링**하여 줄이고, 고위험 명령의 승인 경계는 유지합니다.
+- `.codex/config.toml`은 `workspace-write + network=allow + ask-for-approval=on-request`를 기본으로 유지합니다.
+- 더 넓은 권한이 필요할 때는 broad allow보다 **좁은 prefix approval** 또는 wrapper script를 우선 고려합니다.
 
 ### Git Flow & PR Creation (⚠️ CRITICAL - Hang 방지)
 
@@ -115,17 +144,20 @@
 ## 💻 Essential Commands
 
 ```bash
+# 세션 시작 상태 점검 번들
+scripts/session_bootstrap.sh
+
 # 의존성 동기화
 uv sync --frozen
+
+# 표준 품질 게이트 번들
+scripts/run_quality_gate.sh --range origin/master..HEAD
 
 # 메인 파이프라인 1회 실행
 uv run python -m src.main
 
 # 피드백 수집 서버 실행
 uv run python -m src.apps.feedback_server
-
-# 안전한 단위 테스트 실행 (네트워크 불필요)
-uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -v
 
 # 런타임 상태(SQLite/Actions 대응) 점검
 uv run python scripts/check_runtime_state.py --db-path .tmp/runtime/stock_project.db --label local-check
@@ -167,18 +199,11 @@ python -c "import ast; ast.parse(open('src/main.py').read()); print('OK')"
 Codex가 새 세션을 시작할 때 다음 명령어를 우선 실행하십시오:
 
 ```bash
-# 1. 태스크 및 상태 파악
-cat todo/todo.md
-ls -t logging/ | head -1 | xargs -I{} cat logging/{}
+# 기본 세션 초기화
+scripts/session_bootstrap.sh
 
-# 2. 형상 관리 상태 확인
-git status && git branch
-
-# 3. 훅/설정 상태 확인
-git config --get core.hooksPath
-
-# 4. 프로젝트 정상 상태(Green Build) 확인
-uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
+# 빠른 문서/상태 확인만 필요할 때
+scripts/session_bootstrap.sh --no-tests
 ```
 
 ## 📚 Project Management Context
