@@ -463,6 +463,60 @@ class Database:
             del summary["_latency_total"]
         return summaries
 
+    def get_connector_daily_rollups(self, days: int = 7) -> List[Dict[str, Any]]:
+        """최근 N일 기준 source별 일자 롤업을 반환합니다."""
+        since = (datetime.now() - timedelta(days=days)).isoformat()
+        cursor = self._conn.execute(
+            """
+            SELECT
+                source_id,
+                substr(timestamp, 1, 10) AS day,
+                SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS success_count,
+                SUM(CASE WHEN status = 'skip' THEN 1 ELSE 0 END) AS skip_count,
+                SUM(CASE WHEN status NOT IN ('ok', 'skip') THEN 1 ELSE 0 END) AS failure_count,
+                SUM(CASE WHEN status != 'skip' THEN 1 ELSE 0 END) AS sample_count,
+                AVG(CASE WHEN status != 'skip' THEN latency_ms END) AS avg_latency_ms
+            FROM external_connector_runs
+            WHERE timestamp >= ?
+            GROUP BY source_id, day
+            ORDER BY day DESC, source_id ASC
+            """,
+            (since,),
+        )
+
+        rollups: List[Dict[str, Any]] = []
+        for row in cursor.fetchall():
+            sample_count = int(row["sample_count"] or 0)
+            success_count = int(row["success_count"] or 0)
+            failure_count = int(row["failure_count"] or 0)
+            rollups.append(
+                {
+                    "source_id": row["source_id"],
+                    "day": row["day"],
+                    "sample_count": sample_count,
+                    "success_count": success_count,
+                    "failure_count": failure_count,
+                    "skip_count": int(row["skip_count"] or 0),
+                    "success_rate": round(success_count / sample_count, 4) if sample_count > 0 else 0.0,
+                    "avg_latency_ms": int(row["avg_latency_ms"] or 0),
+                }
+            )
+        return rollups
+
+    def get_recent_connector_failures(self, days: int = 7, limit: int = 5) -> List[Dict[str, Any]]:
+        """최근 N일 기준 외부 커넥터 실패 사유를 최신순으로 조회합니다."""
+        since = (datetime.now() - timedelta(days=days)).isoformat()
+        cursor = self._conn.execute(
+            (
+                "SELECT source_id, timestamp, detail "
+                "FROM external_connector_runs "
+                "WHERE timestamp >= ? AND status NOT IN ('ok', 'skip') "
+                "ORDER BY timestamp DESC LIMIT ?"
+            ),
+            (since, limit),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
     def insert_connector_alert_event(
         self,
         source_id: str,

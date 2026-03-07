@@ -164,6 +164,55 @@ class TestDatabase(unittest.TestCase):
 
         self.assertTrue(self.db.has_recent_connector_alert(fingerprint, cooldown_minutes=60))
 
+    def test_connector_daily_rollups_group_by_day_and_source(self):
+        """일자별 롤업은 source/day 기준으로 성공률과 평균 지연을 계산한다."""
+        self.db.insert_connector_run("opendart", "ok", 3, 100)
+        self.db.insert_connector_run("opendart", "error", 0, 300, "timeout")
+        self.db.insert_connector_run("opendart", "skip", 0, 50, "disabled")
+        self.db.insert_connector_run("fred", "ok", 5, 200)
+
+        rows = self.db.get_recent_connector_runs(limit=4)
+        timestamps = {}
+        for row in rows:
+            key = (row["source_id"], row["status"])
+            if key == ("fred", "ok"):
+                timestamps[row["id"]] = "2026-03-06T07:00:00"
+            elif key == ("opendart", "skip"):
+                timestamps[row["id"]] = "2026-03-07T07:00:00"
+            elif key == ("opendart", "error"):
+                timestamps[row["id"]] = "2026-03-07T08:00:00"
+            else:
+                timestamps[row["id"]] = "2026-03-07T09:00:00"
+        for row_id, ts in timestamps.items():
+            self.db._conn.execute(
+                "UPDATE external_connector_runs SET timestamp = ? WHERE id = ?",
+                (ts, row_id),
+            )
+        self.db._conn.commit()
+
+        rollups = self.db.get_connector_daily_rollups(days=14)
+        opendart = [row for row in rollups if row["source_id"] == "opendart"][0]
+        fred = [row for row in rollups if row["source_id"] == "fred"][0]
+
+        self.assertEqual(opendart["day"], "2026-03-07")
+        self.assertEqual(opendart["sample_count"], 2)
+        self.assertEqual(opendart["skip_count"], 1)
+        self.assertEqual(opendart["success_rate"], 0.5)
+        self.assertEqual(opendart["avg_latency_ms"], 200)
+        self.assertEqual(fred["day"], "2026-03-06")
+        self.assertEqual(fred["success_rate"], 1.0)
+
+    def test_get_recent_connector_failures_returns_latest_errors(self):
+        """실패 사유 조회는 ok/skip을 제외하고 최신 오류만 반환한다."""
+        self.db.insert_connector_run("opendart", "ok", 1, 100)
+        self.db.insert_connector_run("fred", "error", 0, 500, "timeout")
+        self.db.insert_connector_run("sec_edgar", "error", 0, 700, "http 503")
+
+        failures = self.db.get_recent_connector_failures(days=1, limit=2)
+        self.assertEqual(len(failures), 2)
+        self.assertEqual(failures[0]["source_id"], "sec_edgar")
+        self.assertIn("503", failures[0]["detail"])
+
     # --- 리포트 스냅샷 테스트 ---
 
     def test_insert_and_get_recent_report_snapshot(self):
