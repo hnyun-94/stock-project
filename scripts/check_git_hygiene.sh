@@ -31,7 +31,8 @@ fi
 
 absolute_path_hits="$(
   git ls-files -z \
-    | xargs -0 rg -n -g '!scripts/check_git_hygiene.sh' "$ABSOLUTE_PATH_PATTERN" \
+    | xargs -0 rg -n "$ABSOLUTE_PATH_PATTERN" \
+    | grep -Ev '^scripts/check_git_hygiene\.sh:' \
     || true
 )"
 if [ -n "$absolute_path_hits" ]; then
