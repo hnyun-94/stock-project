@@ -95,6 +95,11 @@
 - Gemini per-run budget, persistent quota block, 사용자 간 런타임 cache 재사용으로 free-tier 429 재발 가능성 축소
 - UI/UX 전문가, 퍼블리셔 전문가를 review 문서/skill/hook 검증 체계에 반영
 
+21. 2026-03-08 리포트 팔레트/헤더/문장 완결성 보강
+- 이메일 메인 색상을 `#845ec2`, 보조색을 `#ff6f91` 기준으로 재정렬
+- 표 헤더를 `오늘 숫자`, `읽는 포인트`, `하루 변화` 같은 구독자 친화 별칭으로 변환
+- 요약/전망/시각 문구에서 `…`로 잘린 문장이 남지 않도록 문장 단위 종료 규칙으로 변경
+
 ---
 
 ## 3) 코드 기준선 (핵심 모듈)
@@ -136,7 +141,7 @@
 
 - 테스트 명령:
   - `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q`
-- 최신 기준: **146 passed**
+- 최신 기준: **147 passed**
 
 ---
 

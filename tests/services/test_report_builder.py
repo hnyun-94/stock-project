@@ -9,6 +9,7 @@ from datetime import datetime
 from src.models import CommunityPost, MarketIndex, NewsArticle, SearchTrend
 from src.services.report_builder import (
     _signal_news_items,
+    _truncate_text,
     build_report_payload,
     extract_key_points,
 )
@@ -66,6 +67,17 @@ class TestReportBuilder(unittest.TestCase):
 
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered[0].title, "AI 서버 투자 확대")
+
+    def test_truncate_text_keeps_complete_sentence_without_ellipsis(self):
+        text = (
+            "시장 판단은 지수 숫자 하나보다 수급, 환율, 거시 변수, 핵심 뉴스가 같은 방향을 가리키는지 함께 보는 것이 더 중요합니다. "
+            "그래서 지금은 후속 숫자 확인이 먼저입니다."
+        )
+
+        truncated = _truncate_text(text, 70)
+
+        self.assertNotIn("…", truncated)
+        self.assertTrue(truncated.endswith("중요합니다."))
 
     def test_build_report_payload_creates_value_focused_sections(self):
         previous_snapshot = {

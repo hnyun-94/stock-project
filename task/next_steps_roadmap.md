@@ -9,7 +9,7 @@
 ## 1) 현재 기준선
 
 - 코드베이스: `master` clean
-- 품질 게이트: `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q` → **146 passed**
+- 품질 게이트: `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q` → **147 passed**
 - 완료 범위:
   - Git 거버넌스(커밋/푸시/PR/리뷰/머지) 강제
   - Gemini 404 복원력 + Prompt/CI 안정화
@@ -20,6 +20,7 @@
   - 리포트 Markdown 가독성 재설계
   - 리포트 구독자 친화 레이아웃 재배치(상단 대시보드, 3축 브리핑, 시간대 압축판)
   - 이메일 렌더링 보강(h1, inline style, table wrapper) + Gemini run budget/quota block 운영값 명시
+  - 리포트 팔레트 고정(`#845ec2`, `#ff6f91`) + 구독자 친화 헤더 alias + 완결된 문장 요약 규칙 적용
   - `gh`/`uv` 위임 정책 정리 + 11개 역할 리뷰 체계 확장
   - Completion Context Triage 정책 + `AGENTS.md` 상위 라우팅 구조 최적화
 
