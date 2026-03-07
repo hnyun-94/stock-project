@@ -128,28 +128,33 @@
     - 실행 목적과 영향 범위를 작업 맥락 안에서 설명할 수 있어야 함
     - 실행 결과와 실패 여부를 최종 응답에 명시해야 함
     - `uv` 바깥의 별도 고위험 명령을 함께 묶지 않아야 함
-- **Delegated GitHub Collaboration / 상시 위임 범위**
-  - 아래 명령은 일반적인 GitHub 협업 흐름으로 간주하고, 별도 사용자 재확인 없이 진행합니다.
+- **Delegated gh Commands / 상시 위임 범위**
+  - 사용자가 명시적으로 `gh` 위임을 허용한 범위로 간주하고, 현재 repo의 협업/조회성 `gh` 명령은 별도 재확인 없이 진행합니다.
   - `git push origin <branch>`, `git push -u origin <branch>`
-  - `gh pr create --body-file`, `gh pr view`, `gh pr checks`, `gh pr merge --squash --delete-branch`
-  - `gh run view`, `gh run watch`, `gh workflow view`, `gh repo view`
+  - `gh pr ...`
+  - `gh run ...`
+  - `gh workflow ...`
+  - `gh repo view`
+  - `gh issue ...`
+  - `gh label list`, `gh search prs`, `gh search issues`
   - 전제 조건:
+    - 현재 repo 범위의 협업/조회 작업이어야 함
     - 로컬 변경 의도와 목적이 명확해야 함
-    - 품질 게이트 또는 `pre-push` 자동 검증을 통과해야 함
-    - force push, destructive option, 관리자급 설정 변경이 아니어야 함
+    - write 성격 작업은 품질 게이트 또는 `pre-push` 자동 검증을 통과해야 함
+    - 계정/조직/설정/secret/파괴적 작업이 아니어야 함
 - **Always Review / 항상 재확인**
   - `.env`, secret, credential, mail account, webhook secret 관련 명령
   - `docker-compose up` 같은 서버/컨테이너 실행
   - `scripts/update_notion_*`, `scripts/provision_prompt_db.py`, schema/data mutation
   - `rm`, `git reset --hard`, `git checkout --`, 대량 삭제/복구
   - `git push --force`, remote branch 삭제, `gh api`, `gh auth`, `gh secret`, `gh variable`
-  - repo/admin setting 변경, mass edit, release 삭제 같은 관리자급 GitHub 작업
+  - `gh repo edit`, `gh ruleset`, `gh release delete`, 조직/계정 범위 mass action 같은 관리자급 GitHub 작업
 
 판단 원칙:
 
 - 승인 피로는 **안전한 명령군을 번들링**하여 줄이고, 고위험 명령의 승인 경계는 유지합니다.
 - `.codex/config.toml`은 `workspace-write + network=allow + ask-for-approval=on-request`를 기본으로 유지합니다.
-- 사용자가 명시적으로 위임한 `uv` prefix는 반복 작업 비용 절감을 위해 상시 위임 범위로 취급합니다.
+- 사용자가 명시적으로 위임한 `uv` prefix와 현재 repo 범위의 `gh` 협업 명령은 반복 작업 비용 절감을 위해 상시 위임 범위로 취급합니다.
 - 더 넓은 권한이 필요할 때는 broad allow보다 **좁은 prefix approval** 또는 wrapper script를 우선 고려합니다.
 
 ### Git Flow & PR Creation (⚠️ CRITICAL - Hang 방지)

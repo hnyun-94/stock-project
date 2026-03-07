@@ -37,5 +37,6 @@
 - `check_changed_python_lint.sh`는 레거시 전체 lint 도입 전, 변경 파일만 기본 정적 검사로 묶는 점진 게이트입니다.
 - `check_git_hygiene.sh`는 Git에 올라가면 안 되는 로컬 산출물과 민감 패턴을 검사합니다.
 - `check_review_policy.sh`는 구현성 변경이 근거 없는 즉흥 작업으로 끝나지 않았는지 검사합니다.
+- 현재 repo 범위의 `gh` 협업/조회 명령은 상시 위임 범위로 보되, `gh api`, secret/variable, repo setting, destructive release 작업은 계속 재확인 대상으로 둡니다.
 - `.env`, 외부 발송, 서버 listen, Notion 스키마 변경, destructive command는 이 번들에 포함하지 않습니다.
 - 상세 기준은 `AGENTS.md`의 `Command Permission Policy` 섹션을 따릅니다.

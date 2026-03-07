@@ -29,7 +29,7 @@ description: "Use when the user asks to reduce approval fatigue, classify comman
    - Safe: read-only, 로컬 검증, workspace 내부 스크립트
    - Caution: 범위가 애매한 remote write, uv 외 일반 외부 시스템 변경
    - Delegated uv Commands: 사용자가 prefix 자체를 위임한 `uv sync`, `uv run ...`, `uv tool ...`
-   - Delegated GitHub Collaboration: 일반적인 push/PR/CI 상태 확인
+   - Delegated gh Commands: 현재 repo 범위의 일반적인 협업/조회 명령
    - Always Review: `.env`, non-uv 서버/컨테이너 실행, schema 변경, destructive command, 관리자급 GitHub 명령
 4. 안전한 명령군은 wrapper script로 묶습니다.
    - `scripts/session_bootstrap.sh`
@@ -38,13 +38,14 @@ description: "Use when the user asks to reduce approval fatigue, classify comman
 
 ## Guardrails
 
-- 일반 GitHub 협업 명령은 위임할 수 있습니다.
-  - 예: `git push`, `gh pr create/view/checks/merge`, `gh run view/watch`
+- 현재 repo 범위의 `gh` 협업/조회 명령은 위임할 수 있습니다.
+  - 예: `git push`, `gh pr ...`, `gh run ...`, `gh workflow ...`, `gh issue ...`
 - 사용자가 `uv` 전체를 위임한 경우 `uv` prefix는 별도 재확인 없이 사용합니다.
   - 예: `uv sync`, `uv run python -m pytest ...`, `uv run python -m src.main`
 - 하지만 아래는 계속 재확인 대상으로 남깁니다.
   - `gh api`, `gh auth`, `gh secret`, `gh variable`
-  - force push, remote branch 삭제, repo/admin setting 변경, release 삭제
+  - `gh repo edit`, `gh ruleset`, `gh release delete`
+  - force push, remote branch 삭제, repo/admin setting 변경, 조직/계정 범위 대량 작업
   - `.env`, Notion schema, Docker, destructive git
 - `ask-for-approval = never` 같은 광범위 완화는 기본적으로 금지합니다.
 - 승인 피로는 권한 축소가 아니라 "반복 안전 명령의 표준화"로 해결합니다.
