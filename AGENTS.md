@@ -33,6 +33,7 @@
 
 - Git hook은 `.githooks/`를 사용하며 `pre-push`에서 표준 품질 게이트(`tests/services/`, `tests/test_e2e_dryrun.py`)를 검증합니다.
 - `pre-push`에서 **커밋당 변경량(추가+삭제) 400줄 초과 여부**를 함께 검증합니다.
+- `pre-push`에서 `scripts/check_changed_python_lint.sh`로 **변경한 Python 파일만** Ruff 기본 린트(F/I)를 검사합니다.
 - `pre-push`에서 `scripts/check_context_sync.sh`를 통해 문맥 동기화 경고(`task/`, `todo/`, `done/`, `README.md`, `AGENTS.md`)와 런타임 상태 smoke check를 함께 수행합니다.
 - `pre-push`에서 `scripts/check_review_policy.sh`로 역할별 검토/근거/판단 문서화가 누락되지 않았는지 검사합니다.
 - `pre-push`에서 `scripts/check_git_hygiene.sh`로 금지 경로, 절대 경로, 실제 이메일 노출 여부를 검사합니다.
@@ -182,6 +183,7 @@
 
 1. 기능 단위 분할, 우선순위 정리, 커밋 예산 산정
 2. 품질 게이트 실행 (`uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q`)
+  - `scripts/check_changed_python_lint.sh --range origin/master..HEAD`도 함께 고려합니다.
 3. 기능 단위 커밋 생성 (Conventional Commit)
   - 커밋은 계획서의 커밋 예산에 맞춰 분리합니다.
   - 수동 `scripts/check_commit_size.sh`는 drift 의심 시에만 사용합니다.
@@ -212,6 +214,9 @@ uv sync --frozen
 
 # 표준 품질 게이트 번들
 scripts/run_quality_gate.sh --range origin/master..HEAD
+
+# 변경한 Python 파일 기본 린트
+sh scripts/check_changed_python_lint.sh --range origin/master..HEAD
 
 # 메인 파이프라인 1회 실행
 uv run python -m src.main

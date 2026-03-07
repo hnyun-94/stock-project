@@ -6,11 +6,56 @@
 """
 
 import os
+from typing import List
+
 import requests
 
 from src.models import User
 from src.services.notifier.base import NotificationSender
 from src.utils.logger import global_logger
+
+
+def _parse_positive_int_env(env_key: str, default_value: int) -> int:
+    """Parses a positive integer env var and falls back on invalid input."""
+    raw = os.getenv(env_key, "").strip()
+    if not raw:
+        return default_value
+    try:
+        parsed = int(raw)
+    except ValueError:
+        global_logger.warning(
+            "[TelegramSender] %s 값이 정수가 아닙니다: %s. 기본값 %s를 사용합니다.",
+            env_key,
+            raw,
+            default_value,
+        )
+        return default_value
+    return parsed if parsed > 0 else default_value
+
+
+def _split_message(text: str, max_length: int) -> List[str]:
+    """Splits a long Telegram message into safe chunks."""
+    compact = (text or "").strip()
+    if not compact:
+        return [""]
+
+    chunks: List[str] = []
+    remaining = compact
+    while remaining:
+        if len(remaining) <= max_length:
+            chunks.append(remaining)
+            break
+
+        split_at = remaining.rfind("\n", 0, max_length)
+        if split_at < max_length // 2:
+            split_at = remaining.rfind(" ", 0, max_length)
+        if split_at < max_length // 2:
+            split_at = max_length
+
+        chunks.append(remaining[:split_at].rstrip())
+        remaining = remaining[split_at:].lstrip()
+    return chunks
+
 
 class TelegramSender(NotificationSender):
     """
@@ -37,33 +82,56 @@ class TelegramSender(NotificationSender):
             global_logger.info("[TelegramSender] 텔레그램 봇 토큰(TELEGRAM_BOT_TOKEN)이 설정되어 있지 않습니다.")
             return False
 
-        # 파도(물결) 등 마크다운 충돌 문자를 우회하려면 단순 HTML 송신 모드도 좋습니다. 
-        # 여기서는 주식 리포트가 markdown 문법이 섞여올 확률이 높으므로 MarkdownV2를 쓰거나 
-        # 안전한 HTML 파싱을 지원하는 방식으로 전송합니다. 본 프로젝트는 이메일 위주로 설계되었으므로,
-        # 텔레그램 발송 시엔 텍스트 길이나 마크다운 문제 최소화를 위해 기본 Markdown 속성을 사용합니다.
-        
-        # 텔레그램 메시지는 제목+본문을 하나의 텍스트로 결합
         message = f"📢 {subject}\n\n{content}"
-        
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        payload = {
-            "chat_id": chat_id,
-            "text": message,
-            "parse_mode": "HTML"  # AI_Summarizer의 출력을 HTML로 포맷팅해서 보내도 됩니다. 
-                                  # 하지만 여기선 간단히 전송 시 에러를 막기위해 None 혹은 명확한 텍스트로 보냅니다.
-                                  # 일단 에러 회피를 위해 옵션을 제외하거나, 내용의 특수문자를 감안해야 합니다.
-        }
-        # 안전을 위해 parse_mode 없이 단순 String으로 던집니다. (이후 고도화 시 개선 가능)
-        del payload["parse_mode"]
-        
+        timeout_seconds = _parse_positive_int_env(
+            "TELEGRAM_REQUEST_TIMEOUT_SECONDS",
+            10,
+        )
+        max_length = _parse_positive_int_env(
+            "TELEGRAM_MESSAGE_MAX_LENGTH",
+            3500,
+        )
+        chunks = _split_message(message, max_length)
+
         try:
-            response = requests.post(url, json=payload)
-            if response.status_code == 200:
-                global_logger.info(f"[TelegramSender] 텔레그램 발송 완료: {chat_id}")
-                return True
-            else:
-                global_logger.info(f"[TelegramSender] 텔레그램 발송 실패 ({chat_id}): HTTP {response.status_code} - {response.text}")
-                return False
-        except Exception as e:
-            global_logger.info(f"[TelegramSender] 요청 중 예외 발생 ({chat_id}): {e}")
+            for index, chunk in enumerate(chunks, start=1):
+                payload = {
+                    "chat_id": chat_id,
+                    "text": (
+                        f"[{index}/{len(chunks)}] {chunk}"
+                        if len(chunks) > 1
+                        else chunk
+                    ),
+                }
+                response = requests.post(
+                    url,
+                    json=payload,
+                    timeout=timeout_seconds,
+                )
+                response.raise_for_status()
+
+            global_logger.info(
+                "[TelegramSender] 텔레그램 발송 완료: %s (chunks=%s)",
+                chat_id,
+                len(chunks),
+            )
+            return True
+        except requests.RequestException as exc:
+            response = getattr(exc, "response", None)
+            status = getattr(response, "status_code", "n/a")
+            body = getattr(response, "text", "")
+            global_logger.warning(
+                "[TelegramSender] 요청 실패 (%s): HTTP %s - %s",
+                chat_id,
+                status,
+                body or exc,
+            )
+            return False
+        except Exception as exc:  # pragma: no cover - defensive branch
+            global_logger.warning(
+                "[TelegramSender] 요청 중 예외 발생 (%s): %s",
+                chat_id,
+                exc,
+            )
             return False
