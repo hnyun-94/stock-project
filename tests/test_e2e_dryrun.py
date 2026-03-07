@@ -166,16 +166,66 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                 "title": "🌤️ 리포트",
                 "subtitle": "요약",
                 "headline_changes": ["헤드라인 1"],
-                "recent_focus": ["포인트 1"],
-                "time_windows": [{"label": "1D", "title": "오늘", "bullets": ["요약 1"]}],
-                "theme_sections": [{"keyword": "AI", "points": ["테마 1"]}],
-                "holding_sections": [{"holding": "삼성전자", "stance": "유지", "summary": "근거", "action": "액션"}],
-                "long_term_plan": ["장기 1"],
+                "quick_take": {
+                    "summary": "핵심 요약",
+                    "details": ["근거 1"],
+                    "positive_view": "긍정",
+                    "neutral_view": "중립",
+                    "negative_view": "부정",
+                    "outlook": "전망",
+                },
+                "time_windows": [
+                    {
+                        "label": "1D",
+                        "title": "오늘",
+                        "summary": "요약 1",
+                        "details": ["근거 1"],
+                        "positive_view": "긍정",
+                        "neutral_view": "중립",
+                        "negative_view": "부정",
+                        "outlook": "전망",
+                    }
+                ],
+                "theme_sections": [
+                    {
+                        "keyword": "AI",
+                        "summary": "테마 요약",
+                        "details": ["테마 근거"],
+                        "positive_view": "긍정",
+                        "neutral_view": "중립",
+                        "negative_view": "부정",
+                        "outlook": "전망",
+                    }
+                ],
+                "holding_sections": [
+                    {
+                        "holding": "삼성전자",
+                        "stance": "유지",
+                        "summary": "근거",
+                        "details": ["뉴스 근거"],
+                        "positive_view": "긍정",
+                        "neutral_view": "중립",
+                        "negative_view": "부정",
+                        "outlook": "전망",
+                        "action": "액션",
+                    }
+                ],
+                "long_term_section": {
+                    "summary": "장기 1",
+                    "details": ["장기 근거"],
+                    "positive_view": "긍정",
+                    "neutral_view": "중립",
+                    "negative_view": "부정",
+                    "outlook": "전망",
+                },
+                "glossary": [{"term": "HBM", "definition": "고성능 메모리"}],
             }
         )
 
         self.assertIn("## 🧭 헤드라인 변화", markdown_text)
+        self.assertIn("## 📌 오늘 한눈에 보기", markdown_text)
         self.assertIn("## 💼 보유 종목별 인사이트", markdown_text)
+        self.assertIn("## 🧩 용어 풀이", markdown_text)
         self.assertIn("### 삼성전자", markdown_text)
 
 

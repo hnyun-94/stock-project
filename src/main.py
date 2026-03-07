@@ -12,6 +12,8 @@ import sys
 import json
 import traceback
 import asyncio
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 # 스크립트 실행을 위해 환경변수 및 모듈 경로 로드
@@ -27,7 +29,6 @@ from src.crawlers.browser_pool import BrowserPool
 
 from src.services.ai_summarizer import (
     generate_market_summary,
-    generate_theme_briefing,
     generate_theme_briefings_batch,
     generate_holding_insights,
 )
@@ -139,6 +140,7 @@ def _run_source_governance_check() -> None:
 async def run_pipeline() -> None:
     """리포트 생성, 이력 저장, 발송까지 포함한 전체 배치를 실행합니다."""
     global_logger.info("=== 🚀 주식 리포트 생성 파이프라인 시작 ===")
+    report_reference_time = datetime.now(ZoneInfo("Asia/Seoul"))
 
     # 실행 시작 전 데이터 소스 정책/무료 한도 점검
     _run_source_governance_check()
@@ -195,14 +197,6 @@ async def run_pipeline() -> None:
             
         global_logger.info(f"총 {len(users)}명의 대상자를 확인했습니다.")
         
-        common_theme_md = ""
-        if safe_community_posts:
-            common_theme_md = await generate_theme_briefing(
-                "글로벌 및 국내 시장 민심",
-                market_news[:2],
-                safe_community_posts,
-            )
-
         # 시장 감정 지표 분석 [Task 6.19, REQ-F04]
         sentiment_score, sentiment_label = analyze_sentiment(
             market_news,
@@ -249,13 +243,13 @@ async def run_pipeline() -> None:
                 )
             kw_md_results = await generate_theme_briefings_batch(theme_items)
             theme_sections = []
-            if common_theme_md:
-                theme_sections.append(
-                    {"keyword": "시장 민심", "briefing_md": common_theme_md}
-                )
             for keyword, md_text in zip(keywords_to_search, kw_md_results):
                 theme_sections.append({"keyword": keyword, "briefing_md": md_text})
 
+            theme_news_map = {
+                keyword: topic_news_map.get(keyword, [])
+                for keyword in keywords_to_search
+            }
             holding_news_map = {
                 holding: topic_news_map.get(holding, [])
                 for holding in holdings_to_analyze
@@ -283,9 +277,12 @@ async def run_pipeline() -> None:
                 market_news=market_news,
                 datalab_trends=datalab_trends or [],
                 theme_sections=theme_sections,
+                theme_news_map=theme_news_map,
                 sentiment_score=sentiment_score,
                 sentiment_label=sentiment_label,
                 holding_insights=holding_insights,
+                holding_news_map=holding_news_map,
+                community_posts=safe_community_posts,
                 recent_report_rows=recent_report_rows,
                 weekly_report_rows=weekly_report_rows,
                 monthly_report_rows=monthly_report_rows,
@@ -293,6 +290,7 @@ async def run_pipeline() -> None:
                 connector_success_rate_30d=connector_success_rate_30d,
                 avg_feedback_score_30d=avg_feedback_score_30d,
                 avg_accuracy_30d=avg_accuracy_30d,
+                reference_time=report_reference_time,
             )
 
             # 최종 리포트는 "최근 -> 장기" 순서를 유지한 payload를 렌더링합니다.

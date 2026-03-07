@@ -4,8 +4,9 @@
 
 import json
 import unittest
+from datetime import datetime
 
-from src.models import MarketIndex, NewsArticle, SearchTrend
+from src.models import CommunityPost, MarketIndex, NewsArticle, SearchTrend
 from src.services.report_builder import build_report_payload, extract_key_points
 
 
@@ -25,7 +26,7 @@ class TestReportBuilder(unittest.TestCase):
         self.assertEqual(len(points), 3)
         self.assertIn("첫 번째 문장입니다.", points[0])
 
-    def test_build_report_payload_creates_headlines_and_windows(self):
+    def test_build_report_payload_creates_value_focused_sections(self):
         previous_snapshot = {
             "market_regime": "관망",
             "sentiment_score": -30,
@@ -50,8 +51,13 @@ class TestReportBuilder(unittest.TestCase):
             market_news=[NewsArticle(title="반도체 업종 반등", link="https://news1")],
             datalab_trends=[SearchTrend(keyword="AI", traffic="92")],
             theme_sections=[
-                {"keyword": "AI", "briefing_md": "### AI\n- 수요가 재확대되고 있습니다.\n- 반도체 체인이 재평가됩니다."}
+                {"keyword": "AI", "briefing_md": "### AI\n- 수요가 재확대되고 있습니다.\n- 반도체 체인이 재평가됩니다."},
+                {"keyword": "인공지능", "briefing_md": "### 인공지능\n- GPU 수요가 이어집니다."},
             ],
+            theme_news_map={
+                "AI": [NewsArticle(title="AI 서버 투자 확대", link="https://theme1")],
+                "인공지능": [NewsArticle(title="GPU 수요 확대", link="https://theme2")],
+            },
             sentiment_score=15,
             sentiment_label="🟡 중립",
             holding_insights=[
@@ -62,6 +68,16 @@ class TestReportBuilder(unittest.TestCase):
                     "action": "단기 변동성보다 수요 추세를 확인합니다.",
                 }
             ],
+            holding_news_map={
+                "삼성전자": [
+                    NewsArticle(
+                        title="삼성전자 HBM 공급 확대 기대",
+                        link="https://holding1",
+                        summary="HBM 공급 확대 기대가 살아나고 있습니다.",
+                    )
+                ]
+            },
+            community_posts=[CommunityPost(title="개장 전엔 AI 반도체가 핵심이라는 토론", link="https://community1")],
             recent_report_rows=recent_rows,
             weekly_report_rows=recent_rows,
             monthly_report_rows=recent_rows,
@@ -69,14 +85,55 @@ class TestReportBuilder(unittest.TestCase):
             connector_success_rate_30d={"opendart": 0.95},
             avg_feedback_score_30d=4.2,
             avg_accuracy_30d=0.67,
+            reference_time=datetime.fromisoformat("2026-03-07T08:45:00+09:00"),
         )
 
         self.assertEqual(payload["title"], "🌤️ 오늘의 주식 인사이트 리포트")
         self.assertEqual(len(payload["headline_changes"]), 3)
         self.assertEqual(len(payload["time_windows"]), 4)
+        self.assertIsNotNone(payload["quick_take"])
+        self.assertIsNotNone(payload["session_issue_section"])
+        self.assertEqual(payload["session_issue_section"]["title"], "국장 개장 전 공통 이슈")
+        self.assertEqual(payload["theme_sections"][0]["keyword"], "인공지능(AI)")
         self.assertEqual(payload["holding_sections"][0]["holding"], "삼성전자")
         self.assertEqual(snapshot["holding_actions"]["삼성전자"], "유지")
-        self.assertIn("AI", snapshot["focus_keywords"])
+        self.assertIn("인공지능(AI)", snapshot["focus_keywords"])
+        self.assertTrue(any(item["term"] == "AI" for item in payload["glossary"]))
+        self.assertTrue(
+            any("왜 중요한가" in detail or "확인할 것" in detail for detail in payload["theme_sections"][0]["details"])
+        )
+
+    def test_build_report_payload_filters_failure_strings_from_sections(self):
+        payload, _ = build_report_payload(
+            user_name="홍길동",
+            market_summary_md="시장 요약 생성 실패: RetryError[ClientError]",
+            market_indices=[MarketIndex(name="KOSPI", value="2650.10", change="", investor_summary="외국인 순매수")],
+            market_news=[NewsArticle(title="AI 서버 투자 확대", link="https://news1", summary="AI 투자 확대가 이어진다는 해석입니다.")],
+            datalab_trends=[SearchTrend(keyword="AI", traffic="92")],
+            theme_sections=[
+                {"keyword": "AI", "briefing_md": "테마 브리핑 생성 실패 (AI): RetryError[ClientError]"}
+            ],
+            theme_news_map={
+                "AI": [NewsArticle(title="GPU 수요 확대", link="https://theme1", summary="데이터센터 투자 확대로 GPU 수요가 늘고 있습니다.")]
+            },
+            sentiment_score=7,
+            sentiment_label="🟡 중립",
+            holding_insights=[],
+            holding_news_map={},
+            community_posts=[],
+            recent_report_rows=[],
+            weekly_report_rows=[],
+            monthly_report_rows=[],
+            connector_success_rate_7d={"opendart": 1.0},
+            connector_success_rate_30d={"opendart": 1.0},
+            avg_feedback_score_30d=0,
+            avg_accuracy_30d=0,
+        )
+
+        serialized = json.dumps(payload, ensure_ascii=False)
+        self.assertNotIn("RetryError", serialized)
+        self.assertNotIn("생성 실패", serialized)
+        self.assertIn("GPU 수요 확대", serialized)
 
 
 if __name__ == "__main__":
