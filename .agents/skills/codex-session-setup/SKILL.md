@@ -17,9 +17,9 @@ description: "Initialize a Codex session by loading project-management docs, che
 ## Instructions
 
 1. 핵심 문서 로딩:
-   `AGENTS.md`, `todo/todo.md`, `task/phase6_task.md`, `task/task.md`
+   `AGENTS.md`, `todo/todo.md`, `done/phase6_task.md`, `task/task.md`
 2. E2E 운영 기준 문서 로딩(필요 시):
-   `task/e2e_incident_response_plan.md`, `task/e2e_incident_execution_report.md`
+   `done/e2e_incident_response_plan.md`, `done/e2e_incident_execution_report.md`
 3. 진행 상태 확인:
    `cat todo/todo.md`, 최신 `logging/YYYY-MM-DD.md`
 4. 형상 관리 상태 확인:

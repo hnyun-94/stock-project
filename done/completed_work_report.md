@@ -17,7 +17,7 @@
 ### Phase 6 Task 상태
 
 - Task 6.1 ~ 6.21: **모두 완료**
-- 상세 체크리스트: `task/phase6_task.md`
+- 상세 체크리스트: `done/phase6_task.md`
 - 통합 요약: `todo/todo.md`
 
 ### 최근 구현/정비 완료 항목 (PR #20 ~ #26)
@@ -82,8 +82,8 @@
 ## 5) 참고 문서 맵
 
 - 완료 체크 요약: `todo/todo.md`
-- 상세 Task 원본: `task/phase6_task.md`
-- 병렬 실행/역할 검증: `task/parallel_role_priority_execution_plan.md`
+- 상세 Task 원본: `done/phase6_task.md`
+- 병렬 실행/역할 검증: `done/parallel_role_priority_execution_plan.md`
 - 다음 작업 계획: `task/next_steps_roadmap.md`
 - 당일 실행 로그: `logging/2026-03-07.md`
 

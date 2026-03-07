@@ -20,8 +20,8 @@ description: "Run the project quality gate tests (services + e2e dryrun) before 
 
 1. 표준 품질 게이트를 한 번에 실행합니다.
 2. 실패 시 커밋/푸시를 중단하고 문제를 수정합니다.
-3. 장애 원인/해결 절차는 `task/e2e_incident_response_plan.md`를 기준으로 따릅니다.
-4. 실행 결과와 누락점은 `task/e2e_incident_execution_report.md`에 반영합니다.
+3. 장애 원인/해결 절차는 `done/e2e_incident_response_plan.md`를 기준으로 따릅니다.
+4. 실행 결과와 누락점은 `done/e2e_incident_execution_report.md`에 반영합니다.
 5. 필요 시 `errorCase/`, `todo/todo.md`, `logging/YYYY-MM-DD.md`를 업데이트합니다.
 6. PR 전에는 `scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400`도 함께 실행합니다.
 7. 테스트 실패 상태에서는 커밋/푸시/PR/머지를 진행하지 않습니다.

@@ -557,7 +557,7 @@ ls errorCase/
 | 상세 요구사항     | `requirements/02_detailed_requirements.md`            | Phase 1~4 요구사항               |
 | 아키텍처 설계     | `requirements/03_architecture_and_ai_solution.md`     | 3-Tier 아키텍처                  |
 | 최적화 요구사항   | `requirements/04_phase6_optimization_requirements.md` | Phase 6 상세                     |
-| Task 명세         | `task/phase6_task.md`                                 | Phase 6 실행 계획                |
+| Task 명세         | `done/phase6_task.md`                                 | Phase 6 실행 계획                |
 | 일반 Task         | `task/task.md`                                        | Phase 1~5 Task                   |
 | Todo              | `todo/todo.md`                                        | 전체 체크리스트 (최신)           |
 | 환경변수 템플릿   | `.env.template`                                       | 모든 환경변수 + 발급 가이드      |

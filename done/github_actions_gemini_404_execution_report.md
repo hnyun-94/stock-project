@@ -1,7 +1,7 @@
 # GitHub Actions Gemini 404 개선 실행 결과서
 
 작성일: 2026-03-07  
-참조 계획서: `task/github_actions_gemini_404_improvement_plan.md`
+참조 계획서: `done/github_actions_gemini_404_improvement_plan.md`
 
 ---
 

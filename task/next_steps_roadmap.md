@@ -2,7 +2,7 @@
 
 작성일: 2026-03-07  
 기준: PR #20 ~ #25 머지 완료 상태
-완료 작업 기준선: `task/completed_work_report.md`
+완료 작업 기준선: `done/completed_work_report.md`
 
 ---
 
