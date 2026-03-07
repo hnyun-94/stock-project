@@ -1,7 +1,7 @@
 # Next Steps Roadmap (Post Phase 6)
 
 작성일: 2026-03-07  
-기준: PR #20 ~ #25 머지 완료 상태
+기준: PR #20 ~ #43 머지 완료 상태
 완료 작업 기준선: `done/completed_work_report.md`
 
 ---
@@ -9,12 +9,13 @@
 ## 1) 현재 기준선
 
 - 코드베이스: `master` clean
-- 품질 게이트: `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q` → **103 passed**
+- 품질 게이트: `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q` → **136 passed**
 - 완료 범위:
   - Git 거버넌스(커밋/푸시/PR/리뷰/머지) 강제
   - Gemini 404 복원력 + Prompt/CI 안정화
   - 시장 소스 정책 가드 + 정량 스냅샷
   - 외부 커넥터(data.go/OpenDART/SEC/FRED) + 텔레메트리 + DB 영속화
+  - 리포트 신뢰도 배지 + 외부 지표 해석 + 운영 Runbook + PR Quality Gate
 
 ---
 
