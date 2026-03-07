@@ -12,17 +12,17 @@ E2E 파이프라인 드라이런(Dry-run) 테스트 모듈.
 [Task 6.18, REQ-Q08]
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
 import sys
+import unittest
+from unittest.mock import MagicMock
 
 # logger mock
 sys.modules['src.utils.logger'] = MagicMock()
 
-from src.models import NewsArticle, MarketIndex, CommunityPost, SearchTrend, User
-from src.utils.report_formatter import build_structured_markdown_report
+from src.models import MarketIndex, NewsArticle, User
 from src.utils.cache import TTLCache
 from src.utils.deduplicator import deduplicate_news
+from src.utils.report_formatter import build_structured_markdown_report
 
 
 class TestDataFlowIntegration(unittest.TestCase):
@@ -174,6 +174,8 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                 "quick_take": {
                     "summary": "핵심 요약",
                     "details": ["근거 1"],
+                    "why_it_matters": "왜 중요한가",
+                    "watch_points": ["수급", "환율"],
                     "positive_view": "긍정",
                     "neutral_view": "중립",
                     "negative_view": "부정",
@@ -185,6 +187,8 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                         "title": "오늘",
                         "summary": "요약 1",
                         "details": ["근거 1"],
+                        "why_it_matters": "왜 중요한가",
+                        "watch_points": ["외국인 수급"],
                         "positive_view": "긍정",
                         "neutral_view": "중립",
                         "negative_view": "부정",
@@ -206,6 +210,8 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                         "title": "OpenDART 공시 흐름",
                         "summary": "실적 공시 비중이 늘었습니다.",
                         "details": ["실적 공시 6건"],
+                        "why_it_matters": "왜 중요한가",
+                        "watch_points": ["실적 공시", "자금조달 공시"],
                         "positive_view": "긍정",
                         "neutral_view": "중립",
                         "negative_view": "부정",
@@ -219,6 +225,8 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                         "keyword": "AI",
                         "summary": "테마 요약",
                         "details": ["테마 근거"],
+                        "why_it_matters": "왜 중요한가",
+                        "watch_points": ["HBM", "고객사 CAPEX"],
                         "positive_view": "긍정",
                         "neutral_view": "중립",
                         "negative_view": "부정",
@@ -231,6 +239,8 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                         "stance": "유지",
                         "summary": "근거",
                         "details": ["뉴스 근거"],
+                        "why_it_matters": "왜 중요한가",
+                        "watch_points": ["HBM 납품 확대"],
                         "positive_view": "긍정",
                         "neutral_view": "중립",
                         "negative_view": "부정",
@@ -241,6 +251,8 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                 "long_term_section": {
                     "summary": "장기 1",
                     "details": ["장기 근거"],
+                    "why_it_matters": "왜 중요한가",
+                    "watch_points": ["장기 테마 유지"],
                     "positive_view": "긍정",
                     "neutral_view": "중립",
                     "negative_view": "부정",
@@ -253,6 +265,11 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("## 🧭 헤드라인 변화", markdown_text)
         self.assertIn("리포트 신뢰도: 높음", markdown_text)
         self.assertIn("## 📌 오늘 한눈에 보기", markdown_text)
+        self.assertIn("**핵심 근거**", markdown_text)
+        self.assertIn("**왜 중요한가**", markdown_text)
+        self.assertIn("**지금 볼 것**", markdown_text)
+        self.assertIn("**세 가지 시각**", markdown_text)
+        self.assertIn("**다음 체크포인트**", markdown_text)
         self.assertIn("## 🛰 데이터 신뢰도", markdown_text)
         self.assertIn("## 🧪 외부 지표 해석", markdown_text)
         self.assertIn("## 💼 보유 종목별 인사이트", markdown_text)
