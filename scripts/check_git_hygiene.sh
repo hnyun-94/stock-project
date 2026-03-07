@@ -29,7 +29,11 @@ if [ -n "$forbidden_paths" ]; then
   exit 1
 fi
 
-absolute_path_hits="$(git ls-files -z | xargs -0 rg -n "$ABSOLUTE_PATH_PATTERN" || true)"
+absolute_path_hits="$(
+  git ls-files -z \
+    | xargs -0 rg -n -g '!scripts/check_git_hygiene.sh' "$ABSOLUTE_PATH_PATTERN" \
+    || true
+)"
 if [ -n "$absolute_path_hits" ]; then
   echo "[git-hygiene] ERROR: 추적 파일에서 로컬 절대 경로가 발견되었습니다." >&2
   printf '%s\n' "$absolute_path_hits" >&2
