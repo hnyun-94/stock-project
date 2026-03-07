@@ -227,6 +227,8 @@ async def run_pipeline() -> None:
 
         connector_success_rate_7d = db.get_connector_success_rate(days=7)
         connector_success_rate_30d = db.get_connector_success_rate(days=30)
+        connector_daily_rollups_7d = db.get_connector_daily_rollups(days=7)
+        recent_connector_failures_7d = db.get_recent_connector_failures(days=7, limit=3)
         avg_feedback_score_30d = db.get_average_score(days=30)
         avg_accuracy_30d = db.get_average_accuracy(days=30)
 
@@ -306,6 +308,8 @@ async def run_pipeline() -> None:
                 connector_success_rate_30d=connector_success_rate_30d,
                 avg_feedback_score_30d=avg_feedback_score_30d,
                 avg_accuracy_30d=avg_accuracy_30d,
+                connector_daily_rollups_7d=connector_daily_rollups_7d,
+                recent_connector_failures_7d=recent_connector_failures_7d,
                 reference_time=report_reference_time,
             )
 

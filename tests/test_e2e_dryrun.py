@@ -186,6 +186,16 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                         "outlook": "전망",
                     }
                 ],
+                "data_quality_section": {
+                    "summary": "최근 7일 데이터 품질은 혼조입니다.",
+                    "details": ["근거 1", "근거 2"],
+                    "positive_view": "긍정",
+                    "neutral_view": "중립",
+                    "negative_view": "부정",
+                    "outlook": "전망",
+                    "table_headers": ["날짜", "소스", "성공률", "평균 지연", "판단"],
+                    "table_rows": [["2026-03-07", "opendart", "100%", "120ms", "안정"]],
+                },
                 "theme_sections": [
                     {
                         "keyword": "AI",
@@ -224,9 +234,11 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
 
         self.assertIn("## 🧭 헤드라인 변화", markdown_text)
         self.assertIn("## 📌 오늘 한눈에 보기", markdown_text)
+        self.assertIn("## 🛰 데이터 신뢰도", markdown_text)
         self.assertIn("## 💼 보유 종목별 인사이트", markdown_text)
         self.assertIn("## 🧩 용어 풀이", markdown_text)
         self.assertIn("### 삼성전자", markdown_text)
+        self.assertIn("| 날짜 | 소스 | 성공률 | 평균 지연 | 판단 |", markdown_text)
 
 
 if __name__ == "__main__":

@@ -336,6 +336,117 @@ def _connector_health_note(connector_rates: Dict[str, float]) -> tuple[str, bool
     return f"{strongest_source} 포함 주요 커넥터가 안정적입니다(최고 {strongest_rate * 100:.0f}%).", False
 
 
+def _format_rate_text(rate: float) -> str:
+    return f"{rate * 100:.0f}%"
+
+
+def _connector_rollup_label(row: Dict[str, Any]) -> str:
+    success_rate = float(row.get("success_rate") or 0.0)
+    avg_latency_ms = int(row.get("avg_latency_ms") or 0)
+    if success_rate >= 0.95 and avg_latency_ms < 1500:
+        return "안정"
+    if success_rate < 0.8 or avg_latency_ms >= 4000:
+        return "주의"
+    return "보통"
+
+
+def _build_data_quality_card(
+    *,
+    connector_daily_rollups_7d: Sequence[Dict[str, Any]],
+    recent_connector_failures_7d: Sequence[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    if not connector_daily_rollups_7d:
+        return None
+
+    latest_by_source: Dict[str, Dict[str, Any]] = {}
+    for row in connector_daily_rollups_7d:
+        source_id = str(row.get("source_id") or "")
+        if not source_id:
+            continue
+        if source_id not in latest_by_source:
+            latest_by_source[source_id] = row
+
+    latest_rows = list(latest_by_source.values())
+    if not latest_rows:
+        return None
+
+    strongest_row = max(
+        latest_rows,
+        key=lambda row: (float(row.get("success_rate") or 0.0), -int(row.get("avg_latency_ms") or 0)),
+    )
+    weakest_row = min(
+        latest_rows,
+        key=lambda row: (float(row.get("success_rate") or 0.0), -int(row.get("avg_latency_ms") or 0)),
+    )
+    warning_count = sum(1 for row in latest_rows if _connector_rollup_label(row) == "주의")
+
+    if warning_count == 0:
+        summary = "최근 7일 외부 데이터 수집 품질은 전반적으로 안정적이라, 리포트 해석의 기본 신뢰도는 양호한 편입니다."
+    elif warning_count == len(latest_rows):
+        summary = "최근 7일 외부 데이터 수집 품질은 전반적으로 불안정해, 숫자 해석을 평소보다 더 보수적으로 보는 편이 좋습니다."
+    else:
+        summary = "최근 7일 외부 데이터 수집 품질은 혼조입니다. 안정적인 소스와 주의가 필요한 소스가 함께 보입니다."
+
+    details = []
+    details.append(
+        (
+            f"안정 소스: {strongest_row['source_id']} | 최근 {strongest_row['day']} 성공률 "
+            f"{_format_rate_text(float(strongest_row['success_rate']))}, 평균 지연 {int(strongest_row['avg_latency_ms'])}ms"
+        )
+    )
+    if strongest_row["source_id"] == weakest_row["source_id"]:
+        details.append(
+            (
+                f"최근 관찰치: {weakest_row['source_id']} | 실패 {int(weakest_row['failure_count'])}회, "
+                f"표본 {int(weakest_row['sample_count'])}회"
+            )
+        )
+    else:
+        details.append(
+            (
+                f"주의 소스: {weakest_row['source_id']} | 최근 {weakest_row['day']} 성공률 "
+                f"{_format_rate_text(float(weakest_row['success_rate']))}, 평균 지연 {int(weakest_row['avg_latency_ms'])}ms, "
+                f"실패 {int(weakest_row['failure_count'])}회"
+            )
+        )
+
+    if recent_connector_failures_7d:
+        failure_notes = []
+        seen: set[str] = set()
+        for row in recent_connector_failures_7d:
+            note = f"{row.get('source_id')}({_truncate_text(str(row.get('detail') or '오류 상세 없음'), 40)})"
+            if note in seen:
+                continue
+            seen.add(note)
+            failure_notes.append(note)
+            if len(failure_notes) >= 2:
+                break
+        details.append(f"최근 오류 사유: {', '.join(failure_notes)}")
+    else:
+        details.append(f"최근 7일 관찰 source는 {len(latest_rows)}개입니다.")
+
+    card = _build_card(
+        summary=summary,
+        details=details,
+        positive_view="최근 며칠 동안 높은 성공률이 유지되면, 리포트의 근거 데이터도 조금 더 자신 있게 해석할 수 있습니다.",
+        neutral_view="데이터 품질은 시장 방향 그 자체보다, 지금 보고 있는 해석을 얼마나 믿을지 판단하는 보조 지표로 보면 됩니다.",
+        negative_view="성공률이 낮거나 평균 지연이 길면 오늘 해석이 실제 시장보다 늦거나 일부 신호를 놓쳤을 가능성을 열어둬야 합니다.",
+        outlook="다음 리포트에서는 같은 소스가 다시 흔들리는지, 아니면 하루짜리 일시 장애였는지를 같이 확인하세요.",
+    )
+    card["table_headers"] = ["날짜", "소스", "성공률", "평균 지연", "판단"]
+    card["table_rows"] = [
+        [
+            str(row.get("day") or ""),
+            str(row.get("source_id") or ""),
+            _format_rate_text(float(row.get("success_rate") or 0.0)),
+            f"{int(row.get('avg_latency_ms') or 0)}ms",
+            _connector_rollup_label(row),
+        ]
+        for row in list(connector_daily_rollups_7d)[:6]
+    ]
+    return card
+
+
 def _build_change_headlines(
     current_snapshot: Dict[str, Any],
     previous_snapshots: Sequence[Dict[str, Any]],
@@ -898,6 +1009,8 @@ def build_report_payload(
     connector_success_rate_30d: Dict[str, float],
     avg_feedback_score_30d: float,
     avg_accuracy_30d: float,
+    connector_daily_rollups_7d: Optional[Sequence[Dict[str, Any]]] = None,
+    recent_connector_failures_7d: Optional[Sequence[Dict[str, Any]]] = None,
     reference_time: Optional[datetime] = None,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """리포트 렌더링 payload와 저장용 스냅샷을 생성합니다."""
@@ -985,6 +1098,10 @@ def build_report_payload(
                 ),
             },
         ],
+        "data_quality_section": _build_data_quality_card(
+            connector_daily_rollups_7d=connector_daily_rollups_7d or [],
+            recent_connector_failures_7d=recent_connector_failures_7d or [],
+        ),
         "theme_sections": theme_cards,
         "holding_sections": holding_cards,
         "long_term_section": _build_long_term_card(

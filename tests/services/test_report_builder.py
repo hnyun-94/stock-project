@@ -85,6 +85,31 @@ class TestReportBuilder(unittest.TestCase):
             connector_success_rate_30d={"opendart": 0.95},
             avg_feedback_score_30d=4.2,
             avg_accuracy_30d=0.67,
+            connector_daily_rollups_7d=[
+                {
+                    "day": "2026-03-07",
+                    "source_id": "opendart",
+                    "sample_count": 3,
+                    "success_count": 3,
+                    "failure_count": 0,
+                    "skip_count": 0,
+                    "success_rate": 1.0,
+                    "avg_latency_ms": 120,
+                },
+                {
+                    "day": "2026-03-07",
+                    "source_id": "fred",
+                    "sample_count": 2,
+                    "success_count": 1,
+                    "failure_count": 1,
+                    "skip_count": 0,
+                    "success_rate": 0.5,
+                    "avg_latency_ms": 4200,
+                },
+            ],
+            recent_connector_failures_7d=[
+                {"source_id": "fred", "timestamp": "2026-03-07T08:00:00", "detail": "timeout"}
+            ],
             reference_time=datetime.fromisoformat("2026-03-07T08:45:00+09:00"),
         )
 
@@ -94,6 +119,8 @@ class TestReportBuilder(unittest.TestCase):
         self.assertIsNotNone(payload["quick_take"])
         self.assertIsNotNone(payload["session_issue_section"])
         self.assertEqual(payload["session_issue_section"]["title"], "국장 개장 전 공통 이슈")
+        self.assertIsNotNone(payload["data_quality_section"])
+        self.assertEqual(payload["data_quality_section"]["table_headers"][0], "날짜")
         self.assertEqual(payload["theme_sections"][0]["keyword"], "인공지능(AI)")
         self.assertEqual(payload["holding_sections"][0]["holding"], "삼성전자")
         self.assertEqual(snapshot["holding_actions"]["삼성전자"], "유지")
@@ -128,12 +155,26 @@ class TestReportBuilder(unittest.TestCase):
             connector_success_rate_30d={"opendart": 1.0},
             avg_feedback_score_30d=0,
             avg_accuracy_30d=0,
+            connector_daily_rollups_7d=[
+                {
+                    "day": "2026-03-07",
+                    "source_id": "opendart",
+                    "sample_count": 1,
+                    "success_count": 1,
+                    "failure_count": 0,
+                    "skip_count": 0,
+                    "success_rate": 1.0,
+                    "avg_latency_ms": 100,
+                }
+            ],
+            recent_connector_failures_7d=[],
         )
 
         serialized = json.dumps(payload, ensure_ascii=False)
         self.assertNotIn("RetryError", serialized)
         self.assertNotIn("생성 실패", serialized)
         self.assertIn("GPU 수요 확대", serialized)
+        self.assertIn("table_headers", serialized)
 
 
 if __name__ == "__main__":
