@@ -20,7 +20,7 @@
 - 상세 체크리스트: `done/phase6_task.md`
 - 통합 요약: `todo/todo.md`
 
-### 최근 구현/정비 완료 항목 (PR #20 ~ #42)
+### 최근 구현/정비 완료 항목 (PR #20 ~ #50)
 
 1. PR #20
 - Git 거버넌스 강제 워크플로우 적용
@@ -54,6 +54,36 @@
 10. PR #42
 - 최근 7일 외부 커넥터 일자별 집계 리포트 + 데이터 신뢰도 섹션 추가
 
+11. PR #43
+- 남은 roadmap 범위 구현 완료
+- OpenDART/FRED/SEC 해석 카드, metric trend, 리포트 신뢰도 배지, 운영 Runbook, PR Quality Gate 추가
+
+12. PR #44
+- roadmap/todo 기준선 참조 문서 최신화
+
+13. PR #45
+- 텔레그램 notifier timeout/분할 전송 보강
+- changed-file Ruff 게이트와 PR workflow 품질 보정 추가
+
+14. PR #46
+- 리포트 Markdown 가독성 재설계
+- 노이즈 제목 필터, 카드형 구조, 종목별 watch point 정리
+
+15. PR #47
+- 현재 repo 범위 `gh` 협업/조회 명령 위임 정책 확장
+
+16. PR #48
+- 다중 역할 리뷰 체계를 9개 역할로 확장
+- 품질 담당자 / 시니어 개발자 / 주식 전문가 역할을 문서, skill, hook 검증에 반영
+
+17. PR #49
+- 작업 종료 시 context 유지/압축/초기화 판단 정책 추가
+- deterministic hook가 아닌 운영 정책으로 정리
+
+18. PR #50
+- `AGENTS.md`를 상위 라우팅 문서로 축약
+- 상세 지침을 skills/hook로 이관하고 `completion-context-triage` skill 추가
+
 ---
 
 ## 3) 코드 기준선 (핵심 모듈)
@@ -62,6 +92,9 @@
   - `.githooks/pre-push`
   - `scripts/check_commit_size.sh`
   - `AGENTS.md`
+  - `.agents/skills/review-driven-execution/SKILL.md`
+  - `.agents/skills/completion-context-triage/SKILL.md`
+  - `.agents/skills/command-permission-governance/SKILL.md`
 
 - AI/Prompt 안정화:
   - `src/services/ai_summarizer.py`
@@ -92,7 +125,7 @@
 
 - 테스트 명령:
   - `uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q`
-- 최신 기준: **136 passed**
+- 최신 기준: **142 passed**
 
 ---
 
@@ -113,5 +146,5 @@
 - `task/next_steps_roadmap.md`
 
 우선순위:
-1. 현재 계획 백로그는 완료
+1. 2026-03-07 기준 계획된 작업 중 미완료 항목은 확인되지 않음
 2. 신규 요구사항은 별도 계획 문서에서 재정의
