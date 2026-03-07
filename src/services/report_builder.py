@@ -653,82 +653,267 @@ def _build_monthly_window_card(
     connector_success_rate_30d: Dict[str, float],
     avg_feedback_score_30d: float,
     avg_accuracy_30d: float,
+) -> Dict[str, Any]:
+    health_note, is_low_confidence = _connector_health_note(connector_success_rate_30d)
+    if monthly_focus:
+        summary = f"최근 한 달은 {', '.join(monthly_focus[:2])}가 장기 감시축으로 남아, 완전히 새로운 장세로 바뀌었다고 보긴 어렵습니다."
+    else:
+        summary = "최근 한 달 데이터는 아직 적어 장기 주도축을 강하게 단정하기보다 누적 신호를 더 모아야 합니다."
+
+    details = [health_note, f"최근 30일 관찰치: {len(monthly_snapshots)}회"]
+    if avg_accuracy_30d > 0:
+        details.append(f"예측 적중률 평균: {avg_accuracy_30d * 100:.0f}%")
+    if avg_feedback_score_30d > 0:
+        details.append(f"사용자 만족도 평균: {avg_feedback_score_30d:.1f}/5")
+
+    return _build_card(
+        summary=summary,
+        details=details,
+        positive_view="장기 축이 유지되면 단기 흔들림이 와도 큰 흐름은 쉽게 꺾이지 않을 수 있습니다.",
+        neutral_view="한 달 데이터도 아직 충분하지 않으면, 장기 판단은 비중 조정보다 관찰 비중을 높이는 편이 낫습니다.",
+        negative_view="누적 데이터가 적거나 신뢰도가 낮으면 장기 테마 해석이 실제 시장보다 느릴 수 있습니다." if is_low_confidence else "장기 테마가 살아 있어도 밸류에이션 부담이 커지면 체감 수익은 약할 수 있습니다.",
+        outlook="장기 계획은 한 달 누적 테마가 실제 실적과 얼마나 연결되는지 확인하면서 천천히 조정하는 편이 좋습니다.",
+    )
+
+
+def _merge_theme_sections(
+    theme_sections: Sequence[Dict[str, str]],
+    theme_news_map: Dict[str, Sequence[NewsArticle]],
+) -> List[Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
+
+    for section in theme_sections:
+        original_keyword = section.get("keyword", "").strip()
+        if not original_keyword:
+            continue
+        canonical_keyword = _normalize_theme_keyword(original_keyword)
+        if canonical_keyword not in merged:
+            order.append(canonical_keyword)
+            merged[canonical_keyword] = {
+                "keyword": canonical_keyword,
+                "source_keywords": [],
+                "points": [],
+                "news_items": [],
+            }
+
+        bucket = merged[canonical_keyword]
+        bucket["source_keywords"].append(original_keyword)
+        bucket["points"].extend(extract_key_points(section.get("briefing_md", ""), max_items=4))
+        bucket["news_items"].extend(theme_news_map.get(original_keyword, []))
+
+    merged_sections: List[Dict[str, Any]] = []
+    for keyword in order:
+        bucket = merged[keyword]
+        merged_sections.append(
+            {
+                "keyword": keyword,
+                "source_keywords": _dedupe_list(bucket["source_keywords"]),
+                "points": _dedupe_list(bucket["points"]),
+                "news_items": _dedupe_news_items(bucket["news_items"]),
+            }
+        )
+    return merged_sections
+
+
+def _theme_outlook(keyword: str, joined_context: str) -> str:
+    if "HBM" in joined_context or "메모리" in joined_context:
+        return "다음 체크포인트는 HBM 공급 확대와 메모리 가격 반응입니다."
+    if "GPU" in joined_context or "AI" in joined_context or "인공지능" in keyword:
+        return "다음 체크포인트는 AI 투자 사이클이 실제 수주와 실적으로 이어지는지입니다."
+    if "반도체" in joined_context:
+        return "다음 체크포인트는 고객사 발주와 업황 회복 속도입니다."
+    return "다음 체크포인트는 뉴스가 실제 실적과 자금 유입으로 이어지는지입니다."
+
+
+def _build_theme_cards(
+    theme_sections: Sequence[Dict[str, str]],
+    theme_news_map: Dict[str, Sequence[NewsArticle]],
+) -> List[Dict[str, Any]]:
+    cards: List[Dict[str, Any]] = []
+    for merged in _merge_theme_sections(theme_sections, theme_news_map)[:2]:
+        keyword = merged["keyword"]
+        news_items = merged["news_items"]
+        point_items = merged["points"]
+        joined_context = " ".join([keyword] + point_items + [news.title for news in news_items])
+        news_titles = [item.title for item in news_items[:2]]
+        score = _score_texts(news_titles + point_items)
+
+        if news_titles:
+            summary = f"{keyword}는 지금 '{_truncate_text(news_titles[0], 55)}' 같은 이슈 때문에 다시 주목받고 있습니다."
+        elif point_items:
+            summary = f"{keyword}는 최근 리포트에서 반복해서 보인 테마라, 완전히 식었다고 보긴 어렵습니다."
+        else:
+            summary = f"{keyword}는 최근 관찰 대상이지만 직접 연결된 재료는 아직 적습니다."
+
+        details = []
+        for news in news_items[:2]:
+            details.append(f"무슨 일이 있었나: {_truncate_text(news.title, 90)}")
+            if news.summary:
+                details.append(f"왜 중요한가: {_truncate_text(news.summary, 90)}")
+                break
+        if not details:
+            details = [f"최근 포인트: {point}" for point in point_items[:2]]
+        if len(details) < 3:
+            details.append(f"확인할 것: {_describe_monitor_points(joined_context)}")
+
+        positive_view, neutral_view, negative_view, outlook = _build_context_views(keyword, joined_context)
+        cards.append(
+            {
+                "keyword": keyword,
+                **_build_card(
+                    summary=summary,
+                    details=details[:3],
+                    positive_view=positive_view,
+                    neutral_view=neutral_view,
+                    negative_view=negative_view,
+                    outlook=_truncate_text(
+                        f"{_theme_outlook(keyword, joined_context)} 현재 톤은 {_tone_label(score)}입니다. {outlook}",
+                        120,
+                    ),
+                ),
+            }
+        )
+    return cards
+
+
+def _build_holding_cards(
+    *,
+    holding_insights: Sequence[Dict[str, str]],
+    holding_news_map: Dict[str, Sequence[NewsArticle]],
+) -> tuple[List[Dict[str, Any]], Dict[str, str]]:
+    cards: List[Dict[str, Any]] = []
+    holding_actions: Dict[str, str] = {}
+
+    for insight in holding_insights:
+        holding = insight.get("holding", "").strip()
+        if not holding:
+            continue
+
+        stance = insight.get("stance", "관찰").strip() or "관찰"
+        holding_actions[holding] = stance
+        summary = insight.get("summary", "").strip() or f"{holding}는 직접 연계 뉴스가 적어 추가 확인이 필요합니다."
+        news_items = list(holding_news_map.get(holding, []))[:2]
+        joined_context = " ".join([holding, summary, insight.get("action", "")] + [news.title for news in news_items])
+        details = []
+        for news in news_items:
+            details.append(f"무슨 일이 있었나: {_truncate_text(news.title, 90)}")
+            if news.summary:
+                details.append(f"왜 중요한가: {_truncate_text(news.summary, 90)}")
+                break
+        if not details:
+            details.append("직접 연계 뉴스가 적어 시장 전체 흐름과 함께 보는 편이 좋습니다.")
+        if len(details) < 3:
+            details.append(f"확인할 것: {_describe_monitor_points(joined_context)}")
+
+        positive_view, neutral_view, negative_view, outlook = _build_context_views(holding, joined_context)
+        outlook = insight.get("action", "").strip() or "다음 뉴스와 수급 변화를 확인하세요."
+        if stance == "유지":
+            outlook = f"{outlook} 지금은 기존 포지션을 서두르지 않고 유지하는 쪽이 더 자연스럽습니다."
+        elif stance == "경계":
+            outlook = f"{outlook} 지금은 낙관보다 손실 관리 쪽을 먼저 생각하는 편이 좋습니다."
+
+        cards.append(
+            {
+                "holding": holding,
+                **_build_card(
+                    summary=summary,
+                    details=details[:3],
+                    positive_view=positive_view,
+                    neutral_view=neutral_view,
+                    negative_view=negative_view,
+                    outlook=_truncate_text(
+                        f"현재 톤은 {_tone_label(_score_texts([joined_context]))}입니다. {outlook} {_describe_monitor_points(joined_context)}를 계속 보세요.",
+                        120,
+                    ),
+                    action=insight.get("action", "").strip(),
+                    stance=stance,
+                ),
+            }
+        )
+    return cards, holding_actions
+
+
+def _build_long_term_card(
+    *,
+    monthly_focus: Sequence[str],
+    avg_accuracy_30d: float,
+    avg_feedback_score_30d: float,
+    connector_success_rate_30d: Dict[str, float],
+) -> Dict[str, Any]:
+    health_note, is_low_confidence = _connector_health_note(connector_success_rate_30d)
+    if monthly_focus:
+        summary = f"장기 추적축은 아직 {', '.join(monthly_focus[:2])} 쪽에 무게가 있어, 완전히 다른 장세로 바뀌었다고 보긴 이릅니다."
+    else:
+        summary = "장기 누적 데이터가 아직 적어, 한 달 단위 방향은 섣불리 단정하지 않는 편이 안전합니다."
+
+    details = [health_note]
+    if avg_accuracy_30d > 0:
+        details.append(f"최근 30일 예측 적중률 평균은 {avg_accuracy_30d * 100:.0f}%입니다.")
+    else:
+        details.append("예측 적중률 데이터는 아직 충분히 쌓이지 않았습니다.")
+    if avg_feedback_score_30d > 0:
+        details.append(f"최근 30일 사용자 만족도 평균은 {avg_feedback_score_30d:.1f}/5입니다.")
+
+    return _build_card(
+        summary=summary,
+        details=details,
+        positive_view="장기 테마가 유지되면 단기 흔들림을 지나 다시 같은 주도주로 자금이 모일 수 있습니다.",
+        neutral_view="장기 계획은 한 번에 바꾸기보다, 같은 신호가 반복되는지 확인하면서 조금씩 조정하는 편이 좋습니다.",
+        negative_view="누적 데이터 신뢰도가 낮으면 장기 해석이 실제 시장보다 늦을 수 있습니다." if is_low_confidence else "장기 테마가 살아 있어도 비싸진 종목은 기대만큼 오르지 않을 수 있습니다.",
+        outlook="장기 비중 조정은 다음 달에도 같은 테마가 남는지, 그리고 실제 실적이 따라오는지를 같이 보며 진행하세요.",
+    )
+
+
+def _build_glossary(report_payload: Dict[str, Any]) -> List[Dict[str, str]]:
+    serialized = json.dumps(report_payload, ensure_ascii=False).lower()
+    items: List[Dict[str, str]] = []
+    for term, definition in _GLOSSARY.items():
+        if term.lower() in serialized:
+            items.append({"term": term, "definition": definition})
+    return items
+
+
+# Section D: public payload builder
+
+
+def build_report_payload(
+    *,
+    user_name: str,
+    market_summary_md: str,
+    market_indices: Sequence[MarketIndex],
+    market_news: Sequence[NewsArticle],
+    datalab_trends: Sequence[SearchTrend],
+    theme_sections: Sequence[Dict[str, str]],
+    theme_news_map: Dict[str, Sequence[NewsArticle]],
+    sentiment_score: int,
+    sentiment_label: str,
+    holding_insights: Sequence[Dict[str, str]],
+    holding_news_map: Dict[str, Sequence[NewsArticle]],
+    community_posts: Sequence[CommunityPost],
+    recent_report_rows: Sequence[Dict[str, Any]],
+    weekly_report_rows: Sequence[Dict[str, Any]],
+    monthly_report_rows: Sequence[Dict[str, Any]],
+    connector_success_rate_7d: Dict[str, float],
+    connector_success_rate_30d: Dict[str, float],
+    avg_feedback_score_30d: float,
+    avg_accuracy_30d: float,
+    reference_time: Optional[datetime] = None,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """리포트 렌더링 payload와 저장용 스냅샷을 생성합니다."""
-    market_points = extract_key_points(market_summary_md, max_items=3)
+    market_points = extract_key_points(market_summary_md, max_items=4)
     previous_snapshots = _deserialize_snapshot_rows(recent_report_rows)
     weekly_snapshots = _deserialize_snapshot_rows(weekly_report_rows)
     monthly_snapshots = _deserialize_snapshot_rows(monthly_report_rows)
 
-    theme_cards = []
-    focus_keywords: List[str] = []
-    for section in theme_sections[:3]:
-        keyword = section.get("keyword", "").strip()
-        if not keyword:
-            continue
-        focus_keywords.append(keyword)
-        theme_cards.append(
-            {
-                "keyword": keyword,
-                "points": extract_key_points(section.get("briefing_md", ""), max_items=3),
-            }
-        )
-
-    holding_cards = []
-    holding_actions: Dict[str, str] = {}
-    for insight in holding_insights:
-        symbol = insight.get("holding", "").strip()
-        if not symbol:
-            continue
-        stance = insight.get("stance", "관찰")
-        action = insight.get("action", "추가 확인")
-        holding_actions[symbol] = stance
-        holding_cards.append(
-            {
-                "holding": symbol,
-                "stance": stance,
-                "summary": _truncate_text(insight.get("summary", ""), limit=120),
-                "action": _truncate_text(action, limit=100),
-            }
-        )
-
-    recent_trend_points = []
-    for article in list(market_news)[:2]:
-        recent_trend_points.append(_truncate_text(article.title, 100))
-    for trend in list(datalab_trends or [])[:2]:
-        label = _truncate_text(f"{trend.keyword} 관심도 {trend.traffic or 'N/A'}", 100)
-        if label not in recent_trend_points:
-            recent_trend_points.append(label)
-
-    daily_points = []
-    for market_index in list(market_indices)[:3]:
-        investor_summary = _truncate_text(market_index.investor_summary or "시장 지표", 70)
-        daily_points.append(
-            _truncate_text(f"{market_index.name} {market_index.value} | {investor_summary}", 120)
-        )
-    daily_points.append(f"시장 심리: {sentiment_score:+d} / {sentiment_label}")
-
-    weekly_focus = _recurring_focus_keywords(weekly_snapshots)
-    weekly_points = []
-    if weekly_focus:
-        weekly_points.append(f"최근 7일 반복 테마: {', '.join(weekly_focus[:3])}")
-    weekly_points.append(f"최근 7일 리포트 누적: {len(weekly_report_rows)}회")
-    weekly_points.append(_format_connector_health(connector_success_rate_7d))
-
-    monthly_focus = _recurring_focus_keywords(monthly_snapshots)
-    monthly_points = []
-    if monthly_focus:
-        monthly_points.append(f"최근 30일 장기 축 테마: {', '.join(monthly_focus[:3])}")
-    if avg_accuracy_30d > 0:
-        monthly_points.append(f"최근 30일 예측 적중률 평균: {avg_accuracy_30d * 100:.0f}%")
-    else:
-        monthly_points.append("최근 30일 예측 적중률 데이터는 아직 누적 중입니다.")
-    if avg_feedback_score_30d > 0:
-        monthly_points.append(f"최근 30일 사용자 만족도 평균: {avg_feedback_score_30d:.1f}/5")
-    monthly_points.append(_format_connector_health(connector_success_rate_30d))
+    theme_cards = _build_theme_cards(theme_sections, theme_news_map)
+    focus_keywords = [card["keyword"] for card in theme_cards]
+    holding_cards, holding_actions = _build_holding_cards(
+        holding_insights=holding_insights,
+        holding_news_map=holding_news_map,
+    )
 
     market_regime = _build_market_regime(sentiment_score, sentiment_label, market_points)
-    # snapshot은 비교에 필요한 최소 필드만 저장해 DB 부피를 억제합니다.
     current_snapshot = {
         "user_name": user_name,
         "market_regime": market_regime,
@@ -741,49 +926,74 @@ def _build_monthly_window_card(
     headline_changes = _build_change_headlines(current_snapshot, previous_snapshots)
     current_snapshot["headline_changes"] = headline_changes
 
-    long_term_plan = []
-    if monthly_focus:
-        long_term_plan.append(f"장기 추적 테마는 {', '.join(monthly_focus[:3])} 중심으로 유지합니다.")
-    else:
-        long_term_plan.append(
-            f"현재 강도가 높은 테마인 {', '.join(focus_keywords[:2]) or '시장 지수'}를 장기 감시축으로 둡니다."
-        )
-    long_term_plan.append(
-        "단기 뉴스보다 1주/1개월 누적 변화와 적중률, 만족도 추세를 같이 보며 비중을 조정합니다."
-    )
-    long_term_plan.append(_format_connector_health(connector_success_rate_30d))
+    weekly_focus = _recurring_focus_keywords(weekly_snapshots)
+    monthly_focus = _recurring_focus_keywords(monthly_snapshots)
 
-    # payload 순서는 화면 상단에서 하단으로 읽히는 실제 리포트 구조와 동일합니다.
-    payload = {
+    payload: Dict[str, Any] = {
         "title": "🌤️ 오늘의 주식 인사이트 리포트",
-        "subtitle": "최근 흐름 중심으로 재구성한 5~10분 요약 리포트",
+        "subtitle": "최신 동향과 앞으로의 판단을 쉽게 풀어쓴 5~10분 리포트",
         "headline_changes": headline_changes,
-        "recent_focus": market_points,
+        "quick_take": _build_quick_take_card(
+            market_points=market_points,
+            market_indices=market_indices,
+            focus_keywords=focus_keywords,
+            sentiment_score=sentiment_score,
+            market_regime=market_regime,
+        ),
+        "session_issue_section": _build_session_issue_card(
+            reference_time=reference_time,
+            market_news=market_news,
+            community_posts=community_posts,
+            datalab_trends=datalab_trends,
+        ),
         "time_windows": [
             {
                 "label": "1H",
                 "title": "최근 동향",
-                "bullets": recent_trend_points[:3] or ["최신 뉴스 데이터가 부족해 다음 실행에서 보강됩니다."],
+                **_build_recent_window_card(
+                    market_news=market_news,
+                    datalab_trends=datalab_trends,
+                ),
             },
             {
                 "label": "1D",
-                "title": "오늘 장 마감 요약",
-                "bullets": daily_points[:4],
+                "title": "오늘 장 판단",
+                **_build_daily_window_card(
+                    market_indices=market_indices,
+                    market_points=market_points,
+                    sentiment_score=sentiment_score,
+                ),
             },
             {
                 "label": "1W",
                 "title": "최근 1주 반복 신호",
-                "bullets": weekly_points[:3],
+                **_build_weekly_window_card(
+                    weekly_snapshots=weekly_snapshots,
+                    weekly_focus=weekly_focus,
+                    connector_success_rate_7d=connector_success_rate_7d,
+                ),
             },
             {
                 "label": "1M",
                 "title": "최근 1개월 장기 판단",
-                "bullets": monthly_points[:4],
+                **_build_monthly_window_card(
+                    monthly_snapshots=monthly_snapshots,
+                    monthly_focus=monthly_focus,
+                    connector_success_rate_30d=connector_success_rate_30d,
+                    avg_feedback_score_30d=avg_feedback_score_30d,
+                    avg_accuracy_30d=avg_accuracy_30d,
+                ),
             },
         ],
         "theme_sections": theme_cards,
         "holding_sections": holding_cards,
-        "long_term_plan": long_term_plan[:3],
+        "long_term_section": _build_long_term_card(
+            monthly_focus=monthly_focus,
+            avg_accuracy_30d=avg_accuracy_30d,
+            avg_feedback_score_30d=avg_feedback_score_30d,
+            connector_success_rate_30d=connector_success_rate_30d,
+        ),
         "footer_note": "본 리포트는 자동화된 AI 및 스크래핑 시스템에 의해 수집/편집되었습니다.",
     }
+    payload["glossary"] = _build_glossary(payload)
     return payload, current_snapshot
