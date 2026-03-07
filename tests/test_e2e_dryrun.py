@@ -195,11 +195,12 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                 },
                 "insight_lenses": [
                     {
-                        "title": "매크로",
+                        "title": "경제 온도",
                         "summary": "요약 1",
                         "details": ["근거 1"],
                         "why_it_matters": "왜 중요한가",
                         "watch_points": ["수급"],
+                        "related_links": [{"label": "경제 기사", "url": "https://news.example.com/economy"}],
                         "positive_view": "긍정",
                         "neutral_view": "중립",
                         "negative_view": "부정",
@@ -285,6 +286,12 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                     "negative_view": "부정",
                     "outlook": "전망",
                 },
+                "learning_card": {
+                    "term": "환율",
+                    "summary": "환율은 원화와 달러의 교환 비율입니다.",
+                    "why_today": "오늘은 환율이 시장 해석의 핵심 변수였습니다.",
+                    "how_to_read": "보통 환율이 오르면 시장 불안 해석이 커집니다.",
+                },
                 "glossary": [{"term": "HBM", "definition": "고성능 메모리"}],
             }
         )
@@ -292,22 +299,26 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("## 📍 지금 결론", markdown_text)
         self.assertIn("### 빠르게 보는 판단표", markdown_text)
         self.assertIn("### 오늘 바로 볼 숫자", markdown_text)
-        self.assertIn("## 🧱 오늘 판단을 만드는 세 가지 축", markdown_text)
+        self.assertIn("## 🌍 경제 상황과 트렌드", markdown_text)
         self.assertIn("## 🕒 시간대 압축판", markdown_text)
         self.assertTrue(markdown_text.startswith("# 🌤️ 리포트"))
-        self.assertIn("리포트 신뢰도: 높음", markdown_text)
+        self.assertIn("**리포트 신뢰도**: 높음", markdown_text)
         self.assertIn("| 체크 대상 | 현재 판단 | 읽는 이유 |", markdown_text)
         self.assertIn("| 체크 대상 | 오늘 숫자 | 읽는 포인트 |", markdown_text)
         self.assertIn("| 기간 | 핵심 요약 | 바로 볼 점 |", markdown_text)
         self.assertIn("## 🛰 데이터 신뢰도", markdown_text)
         self.assertIn("## 🧪 보조 지표 해석", markdown_text)
         self.assertIn("## 💼 보유 종목별 인사이트", markdown_text)
+        self.assertIn("## 📘 오늘의 경제 상식", markdown_text)
         self.assertIn("## 🧩 용어 풀이", markdown_text)
         self.assertIn("### 삼성전자", markdown_text)
         self.assertIn("| 기준일 | 데이터 출처 | 정상 수집 비율 | 응답 속도 | 읽는 포인트 |", markdown_text)
         self.assertIn("| 체크 지표 | 지금 수치 | 하루 변화 | 일주일 변화 |", markdown_text)
         self.assertIn("[시장 기사](https://news.example.com/market)", markdown_text)
         self.assertIn("[삼성 기사](https://news.example.com/samsung)", markdown_text)
+        self.assertIn("[경제 기사](https://news.example.com/economy)", markdown_text)
+        self.assertIn("**중립**", markdown_text)
+        self.assertNotIn("**인공지능(**AI**)**", markdown_text)
 
     def test_markdown_to_html_inlines_email_styles(self):
         html_text = markdown_to_html("# 제목\n\n> 요약\n\n| 항목 | 값 |\n| --- | --- |\n| KOSPI | 2600 |")

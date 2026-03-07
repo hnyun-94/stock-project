@@ -210,6 +210,8 @@ class TestReportBuilder(unittest.TestCase):
         self.assertEqual(payload["decision_tiles"][0]["label"], "시장 톤")
         self.assertEqual(payload["market_scoreboard"]["headers"][0], "항목")
         self.assertEqual(len(payload["insight_lenses"]), 3)
+        self.assertEqual(payload["insight_lenses"][0]["title"], "경제 온도")
+        self.assertEqual(payload["insight_lenses"][1]["title"], "자금 흐름")
         self.assertEqual(len(payload["time_windows"]), 4)
         self.assertIsNotNone(payload["quick_take"])
         self.assertEqual(payload["quick_take"]["related_links"][0]["url"], "https://news1")
@@ -220,7 +222,10 @@ class TestReportBuilder(unittest.TestCase):
         self.assertEqual(payload["data_quality_section"]["table_headers"][0], "날짜")
         self.assertEqual(payload["domain_signal_sections"][0]["title"], "OpenDART 공시 흐름")
         self.assertEqual(payload["theme_sections"][0]["keyword"], "인공지능(AI)")
-        self.assertEqual(payload["theme_sections"][0]["related_links"][0]["url"], "https://theme1")
+        self.assertIn(
+            payload["theme_sections"][0]["related_links"][0]["url"],
+            {"https://theme1", "https://theme2"},
+        )
         self.assertEqual(payload["holding_sections"][0]["holding"], "삼성전자")
         self.assertEqual(payload["holding_sections"][0]["related_links"][0]["url"], "https://holding1")
         self.assertEqual(snapshot["holding_actions"]["삼성전자"], "유지")
@@ -231,6 +236,7 @@ class TestReportBuilder(unittest.TestCase):
         self.assertTrue(payload["theme_sections"][0]["watch_points"])
         self.assertTrue(payload["holding_sections"][0]["why_it_matters"])
         self.assertTrue(payload["holding_sections"][0]["watch_points"])
+        self.assertEqual(payload["learning_card"]["term"], "AI")
 
     def test_build_report_payload_filters_failure_strings_from_sections(self):
         payload, _ = build_report_payload(

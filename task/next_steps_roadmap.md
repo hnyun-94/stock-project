@@ -1,7 +1,7 @@
 # Next Steps Roadmap (Post Phase 6)
 
 작성일: 2026-03-07  
-기준: PR #20 ~ #50 머지 완료 상태 + 2026-03-07 후속 보강
+기준: PR #20 ~ #50 머지 완료 상태 + 2026-03-08 후속 보강
 완료 작업 기준선: `done/completed_work_report.md`
 
 ---
@@ -22,6 +22,8 @@
   - 이메일 렌더링 보강(h1, inline style, table wrapper) + Gemini run budget/quota block 운영값 명시
   - 리포트 팔레트 고정(`#845ec2`, `#ff6f91`) + 구독자 친화 헤더 alias + 완결된 문장 요약 규칙 적용
   - 시장/테마/보유 종목 카드에 원문 기사 하이퍼링크 제공
+  - 경제 흐름 섹션(`경제 온도 / 자금 흐름 / 시장 화제`) + `오늘의 경제 상식` 학습 카드 추가
+  - 표 셀 포함 공통 강조 렌더링으로 핵심 판단값 스캔성 강화
   - `gh`/`uv` 위임 정책 정리 + 11개 역할 리뷰 체계 확장
   - Completion Context Triage 정책 + `AGENTS.md` 상위 라우팅 구조 최적화
 

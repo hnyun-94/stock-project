@@ -43,6 +43,39 @@ _TABLE_HEADER_ALIASES = {
     "1D 변화": "하루 변화",
     "7D 변화": "일주일 변화",
 }
+_EMPHASIS_TERMS = (
+    "원/달러 환율",
+    "외국인·기관 수급",
+    "리포트 신뢰도",
+    "인공지능(AI)",
+    "AI",
+    "HBM",
+    "GPU",
+    "KOSPI",
+    "KOSDAQ",
+    "중립",
+    "관찰",
+    "유지",
+    "경계",
+    "공격적",
+    "방어적",
+    "관망",
+    "성장형",
+    "실적형",
+    "혼조형",
+    "방어형",
+    "경제 온도",
+    "자금 흐름",
+    "시장 화제",
+)
+
+
+def _emphasize_text(text: str) -> str:
+    if not text:
+        return text
+
+    pattern = "|".join(re.escape(term) for term in sorted(_EMPHASIS_TERMS, key=len, reverse=True))
+    return re.sub(rf"(?<!\*)({pattern})(?!\*)", r"**\1**", text)
 
 
 def build_markdown_report(market_summary_md: str, theme_briefings_md: list) -> str:
@@ -79,27 +112,27 @@ def _append_card(
 
     summary = card.get("summary")
     if summary:
-        lines.append(f"> {summary_label}: {summary}")
+        lines.append(f"> {summary_label}: {_emphasize_text(summary)}")
         lines.append("")
 
     details = card.get("details", [])
     if details:
         lines.append("**핵심 근거**")
         for idx, detail in enumerate(details, 1):
-            lines.append(f"{idx}. {detail}")
+            lines.append(f"{idx}. {_emphasize_text(detail)}")
         lines.append("")
 
     why_it_matters = card.get("why_it_matters")
     if why_it_matters:
         lines.append("**왜 중요한가**")
-        lines.append(f"- {why_it_matters}")
+        lines.append(f"- {_emphasize_text(why_it_matters)}")
         lines.append("")
 
     watch_points = card.get("watch_points", [])
     if watch_points:
         lines.append("**지금 볼 것**")
         for item in watch_points:
-            lines.append(f"- {item}")
+            lines.append(f"- {_emphasize_text(item)}")
         lines.append("")
 
     related_links = card.get("related_links", [])
@@ -111,20 +144,20 @@ def _append_card(
 
     lines.append("**세 가지 시각**")
     if card.get("positive_view"):
-        lines.append(f"- 긍정: {card['positive_view']}")
+        lines.append(f"- 긍정: {_emphasize_text(card['positive_view'])}")
     if card.get("neutral_view"):
-        lines.append(f"- 중립: {card['neutral_view']}")
+        lines.append(f"- 중립: {_emphasize_text(card['neutral_view'])}")
     if card.get("negative_view"):
-        lines.append(f"- 부정: {card['negative_view']}")
+        lines.append(f"- 부정: {_emphasize_text(card['negative_view'])}")
     lines.append("")
 
     if card.get("outlook"):
         lines.append(f"**{outlook_label}**")
-        lines.append(f"- {card['outlook']}")
+        lines.append(f"- {_emphasize_text(card['outlook'])}")
         lines.append("")
     if card.get("action"):
         lines.append("**실행 아이디어**")
-        lines.append(f"- {card['action']}")
+        lines.append(f"- {_emphasize_text(card['action'])}")
         lines.append("")
 
     headers = card.get("table_headers") or []
@@ -151,7 +184,7 @@ def _append_markdown_table(
     lines.append("| " + " | ".join(aliased_headers) + " |")
     lines.append("| " + " | ".join(["---"] * len(aliased_headers)) + " |")
     for row in rows:
-        lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
+        lines.append("| " + " | ".join(_emphasize_text(str(cell)) for cell in row) + " |")
     lines.append("")
 
 
@@ -185,16 +218,16 @@ def _append_compact_brief(
 
     summary = card.get("summary")
     if summary:
-        lines.append(f"> {summary}")
+        lines.append(f"> {_emphasize_text(summary)}")
         lines.append("")
 
     details = card.get("details", [])
     if details:
-        lines.append(f"- 핵심 근거: {' / '.join(details[:2])}")
+        lines.append(f"- 핵심 근거: {_emphasize_text(' / '.join(details[:2]))}")
     if card.get("why_it_matters"):
-        lines.append(f"- 왜 중요한가: {card['why_it_matters']}")
+        lines.append(f"- 왜 중요한가: {_emphasize_text(card['why_it_matters'])}")
     if card.get("watch_points"):
-        lines.append(f"- 지금 볼 것: {', '.join(card['watch_points'][:3])}")
+        lines.append(f"- 지금 볼 것: {_emphasize_text(', '.join(card['watch_points'][:3]))}")
     if card.get("related_links"):
         lines.append(
             "- 관련 기사: "
@@ -204,9 +237,9 @@ def _append_compact_brief(
             )
         )
     if card.get("outlook"):
-        lines.append(f"- 다음 체크포인트: {card['outlook']}")
+        lines.append(f"- 다음 체크포인트: {_emphasize_text(card['outlook'])}")
     if card.get("action"):
-        lines.append(f"- 실행 아이디어: {card['action']}")
+        lines.append(f"- 실행 아이디어: {_emphasize_text(card['action'])}")
     lines.append("")
 
     _append_three_view_table(lines, card)
@@ -219,12 +252,12 @@ def _append_decision_section(lines: list[str], report_payload: dict) -> None:
     if headline_changes:
         lines.extend(["### 헤드라인 변화", ""])
         for item in headline_changes:
-            lines.append(f"- {item}")
+            lines.append(f"- {_emphasize_text(item)}")
         lines.append("")
 
     quick_take = report_payload.get("quick_take")
     if quick_take:
-        lines.append(f"> 한줄 결론: {quick_take.get('summary', '')}")
+        lines.append(f"> 한줄 결론: {_emphasize_text(quick_take.get('summary', ''))}")
         lines.append("")
         if quick_take.get("related_links"):
             lines.append("**관련 기사**")
@@ -262,19 +295,27 @@ def _append_lens_section(lines: list[str], insight_lenses: list[dict]) -> None:
     if not insight_lenses:
         return
 
-    lines.extend(["## 🧱 오늘 판단을 만드는 세 가지 축", ""])
+    lines.extend(["## 🌍 경제 상황과 트렌드", ""])
     for lens in insight_lenses:
         lines.append(f"### {lens.get('title', '판단 축')}")
         lines.append("")
         if lens.get("summary"):
-            lines.append(f"> {lens['summary']}")
+            lines.append(f"> {_emphasize_text(lens['summary'])}")
             lines.append("")
         if lens.get("details"):
-            lines.append(f"- 핵심 근거: {' / '.join(lens['details'][:2])}")
+            lines.append(f"- 핵심 근거: {_emphasize_text(' / '.join(lens['details'][:2]))}")
         if lens.get("why_it_matters"):
-            lines.append(f"- 왜 중요한가: {lens['why_it_matters']}")
+            lines.append(f"- 왜 중요한가: {_emphasize_text(lens['why_it_matters'])}")
         if lens.get("watch_points"):
-            lines.append(f"- 지금 볼 것: {', '.join(lens['watch_points'][:3])}")
+            lines.append(f"- 지금 볼 것: {_emphasize_text(', '.join(lens['watch_points'][:3]))}")
+        if lens.get("related_links"):
+            lines.append(
+                "- 관련 기사: "
+                + ", ".join(
+                    f"[{link.get('label', '관련 기사')}]({link.get('url', '#')})"
+                    for link in lens["related_links"][:2]
+                )
+            )
         lines.append("")
         _append_three_view_table(lines, lens)
 
@@ -299,7 +340,7 @@ def _append_time_window_digest(lines: list[str], time_windows: list[dict], sessi
 
     if session_issue_section:
         lines.append(
-            f"> 지금 구간 공통 이슈: {session_issue_section.get('summary', '')}"
+            f"> 지금 구간 공통 이슈: {_emphasize_text(session_issue_section.get('summary', ''))}"
         )
         lines.append("")
         if session_issue_section.get("related_links"):
@@ -315,13 +356,13 @@ def build_structured_markdown_report(report_payload: dict) -> str:
 
     subtitle = report_payload.get("subtitle")
     if subtitle:
-        lines.extend([f"> {subtitle}", ""])
+        lines.extend([f"> {_emphasize_text(subtitle)}", ""])
 
     reliability_badge = report_payload.get("reliability_badge")
     if reliability_badge:
         lines.extend(
             [
-                (
+                _emphasize_text(
                     f"> 리포트 신뢰도: {reliability_badge.get('label', '보통')} "
                     f"({reliability_badge.get('score', 0)}/100) - {reliability_badge.get('reason', '')}"
                 ),
@@ -377,6 +418,17 @@ def build_structured_markdown_report(report_payload: dict) -> str:
     if long_term_section:
         lines.extend(["## 🗺️ 장기 플랜", ""])
         _append_compact_brief(lines, heading="중장기 판단", card=long_term_section)
+
+    learning_card = report_payload.get("learning_card")
+    if learning_card:
+        lines.extend(["## 📘 오늘의 경제 상식", ""])
+        lines.append(f"### {learning_card.get('term', '경제 상식')}")
+        lines.append("")
+        lines.append(f"> {_emphasize_text(learning_card.get('summary', ''))}")
+        lines.append("")
+        lines.append(f"- 오늘 왜 중요했나: {_emphasize_text(learning_card.get('why_today', ''))}")
+        lines.append(f"- 이렇게 읽으면 됩니다: {_emphasize_text(learning_card.get('how_to_read', ''))}")
+        lines.append("")
 
     data_quality_section = report_payload.get("data_quality_section")
     if data_quality_section:
