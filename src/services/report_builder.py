@@ -380,36 +380,276 @@ def _build_change_headlines(
         headlines.append(
             f"현재 시장 톤은 {current_snapshot.get('market_regime', '중립')}이며 심리 점수는 {current_snapshot.get('sentiment_score', 0):+d}입니다."
         )
-    if len(headlines) < 2:
-        focus_keywords = current_snapshot.get("focus_keywords", [])
-        if focus_keywords:
-            headlines.append(f"오늘 먼저 볼 테마는 {', '.join(focus_keywords[:3])}입니다.")
-    if len(headlines) < 3:
-        holding_actions = current_snapshot.get("holding_actions", {})
-        if holding_actions:
-            action_points = [f"{holding} {action}" for holding, action in list(holding_actions.items())[:2]]
-            headlines.append(f"보유 종목 포인트는 {', '.join(action_points)}입니다.")
+    if len(headlines) < 2 and current_snapshot.get("focus_keywords"):
+        headlines.append(f"오늘 먼저 볼 테마는 {', '.join(current_snapshot['focus_keywords'][:2])}입니다.")
+    if len(headlines) < 3 and current_snapshot.get("holding_actions"):
+        action_points = [
+            f"{holding} {action}"
+            for holding, action in list(current_snapshot["holding_actions"].items())[:2]
+        ]
+        headlines.append(f"보유 종목 포인트는 {', '.join(action_points)}입니다.")
 
     return headlines[:3]
 
 
-# Section C: public payload builder
+def _as_kst(reference_time: Optional[datetime]) -> datetime:
+    if reference_time is None:
+        return datetime.now(_KST)
+    if reference_time.tzinfo is None:
+        return reference_time.replace(tzinfo=_KST)
+    return reference_time.astimezone(_KST)
 
-def build_report_payload(
+
+def _kr_window_for_day(target_day: date, start_hour: int, start_minute: int, end_hour: int, end_minute: int) -> tuple[datetime, datetime]:
+    start = datetime.combine(target_day, dt_time(start_hour, start_minute), tzinfo=_KST)
+    end = datetime.combine(target_day, dt_time(end_hour, end_minute), tzinfo=_KST)
+    return start, end
+
+
+def _us_window_candidates(reference_kst: datetime) -> List[tuple[str, datetime, datetime]]:
+    candidates: List[tuple[str, datetime, datetime]] = []
+    current_ny_date = reference_kst.astimezone(_NEW_YORK).date()
+    for delta in (-1, 0, 1):
+        ny_day = current_ny_date + timedelta(days=delta)
+        pre_open_start = datetime.combine(ny_day, dt_time(9, 0), tzinfo=_NEW_YORK).astimezone(_KST)
+        pre_open_end = datetime.combine(ny_day, dt_time(9, 30), tzinfo=_NEW_YORK).astimezone(_KST)
+        post_close_start = datetime.combine(ny_day, dt_time(16, 0), tzinfo=_NEW_YORK).astimezone(_KST)
+        post_close_end = datetime.combine(ny_day, dt_time(16, 30), tzinfo=_NEW_YORK).astimezone(_KST)
+        candidates.extend(
+            [
+                ("미장 개장 전 공통 이슈", pre_open_start, pre_open_end),
+                ("미장 마감 직후 공통 이슈", post_close_start, post_close_end),
+            ]
+        )
+    return candidates
+
+
+def _detect_active_session_window(reference_time: Optional[datetime]) -> Optional[str]:
+    reference_kst = _as_kst(reference_time)
+    kr_candidates = [
+        ("국장 개장 전 공통 이슈", *_kr_window_for_day(reference_kst.date(), 8, 30, 9, 0)),
+        ("국장 마감 직후 공통 이슈", *_kr_window_for_day(reference_kst.date(), 15, 30, 16, 0)),
+    ]
+    candidates = kr_candidates + _us_window_candidates(reference_kst)
+    for label, start_at, end_at in candidates:
+        if start_at <= reference_kst <= end_at:
+            return label
+    return None
+
+
+# Section C: card builders
+
+
+def _build_card(
     *,
-    user_name: str,
-    market_summary_md: str,
+    summary: str,
+    details: Sequence[str],
+    positive_view: str,
+    neutral_view: str,
+    negative_view: str,
+    outlook: str,
+    action: str = "",
+    stance: str = "",
+) -> Dict[str, Any]:
+    return {
+        "summary": _truncate_text(summary, 120),
+        "details": [_truncate_text(detail, 120) for detail in _dedupe_list(details)[:3]],
+        "positive_view": _truncate_text(positive_view, 120),
+        "neutral_view": _truncate_text(neutral_view, 120),
+        "negative_view": _truncate_text(negative_view, 120),
+        "outlook": _truncate_text(outlook, 120),
+        "action": _truncate_text(action, 120) if action else "",
+        "stance": stance,
+    }
+
+
+def _build_quick_take_card(
+    market_points: Sequence[str],
     market_indices: Sequence[MarketIndex],
+    focus_keywords: Sequence[str],
+    sentiment_score: int,
+    market_regime: str,
+) -> Dict[str, Any]:
+    support, risk = _pick_primary_market_forces(market_points, focus_keywords)
+    joined_context = " ".join(list(market_points) + list(focus_keywords))
+    summary = (
+        f"지금 시장은 {support}가 버팀목이지만 {risk}도 커서, 급하게 방향을 정하기보다 {market_regime} 시각으로 보는 편이 안전합니다."
+    )
+    details = [f"버팀목: {support}"]
+    if market_indices:
+        details.append(
+            _truncate_text(
+                f"{market_indices[0].name} {market_indices[0].value}, {market_indices[0].investor_summary or '수급 확인 필요'}",
+                120,
+            )
+        )
+    details.append(_describe_why_it_matters("시장", joined_context))
+    return _build_card(
+        summary=summary,
+        details=details[:3],
+        positive_view=_truncate_text(
+            f"{support}와 관련된 뉴스, 수급, 거래대금이 함께 살아나면 심리 점수 {sentiment_score:+d}보다 더 강한 반등 해석이 가능해집니다.",
+            120,
+        ),
+        neutral_view=_truncate_text(
+            f"{support}와 {_attach_particle(risk, '이', '가')} 같이 존재하는 구간이라, 지금은 낙관이나 비관보다 확인 매매 관점이 더 자연스럽습니다.",
+            120,
+        ),
+        negative_view=_truncate_text(
+            f"{_attach_particle(risk, '이', '가')} 다시 커지면 오늘의 기대감은 빠르게 식을 수 있어, 뉴스보다 환율·수급 같은 숫자를 먼저 보는 편이 좋습니다.",
+            120,
+        ),
+        outlook=_truncate_text(
+            f"다음 한두 거래일은 {support} 지속 여부와 {risk} 완화 여부를 함께 확인해야 합니다. 특히 {', '.join(focus_keywords[:2]) or '대표 지수'} 후속 뉴스가 핵심입니다.",
+            120,
+        ),
+    )
+
+
+def _build_session_issue_card(
+    *,
+    reference_time: Optional[datetime],
+    market_news: Sequence[NewsArticle],
+    community_posts: Sequence[CommunityPost],
+    datalab_trends: Sequence[SearchTrend],
+) -> Optional[Dict[str, Any]]:
+    label = _detect_active_session_window(reference_time)
+    if not label:
+        return None
+
+    news_titles = [item.title for item in list(market_news)[:3]]
+    top_news = ", ".join(_truncate_text(title, 50) for title in news_titles[:2]) or "관련 헤드라인 부족"
+    joined_context = " ".join(news_titles + [post.title for post in list(community_posts)[:2]])
+    summary = f"{label}에는 {top_news} 이슈가 시장 대화의 중심이며, 장 시작 전후 해석 차이가 크게 벌어질 수 있습니다."
+    details: List[str] = []
+    if market_news:
+        details.append(f"무슨 일이 있었나: {', '.join(_truncate_text(item.title, 55) for item in list(market_news)[:2])}")
+    if datalab_trends:
+        details.append(
+            "왜 주목하나: "
+            + ", ".join(_truncate_text(f"{item.keyword} {item.traffic}", 40) for item in list(datalab_trends)[:2])
+        )
+    if community_posts:
+        details.append(f"지금 논쟁거리: {_truncate_text(community_posts[0].title, 90)}")
+    else:
+        details.append(_describe_why_it_matters(label, joined_context))
+
+    score = _score_texts(news_titles + [post.title for post in list(community_posts)[:2]])
+    positive_view, neutral_view, negative_view, outlook = _build_context_views(label, joined_context)
+    return {
+        "title": label,
+        **_build_card(
+            summary=summary,
+            details=details[:3],
+            positive_view=positive_view,
+            neutral_view=neutral_view,
+            negative_view=negative_view,
+            outlook=_truncate_text(
+                f"현재 공통 이슈의 전체 톤은 {_tone_label(score)}입니다. {outlook}",
+                120,
+            ),
+        ),
+    }
+
+
+def _build_recent_window_card(
+    *,
     market_news: Sequence[NewsArticle],
     datalab_trends: Sequence[SearchTrend],
-    theme_sections: Sequence[Dict[str, str]],
+) -> Dict[str, Any]:
+    recent_titles = [_truncate_text(article.title, 70) for article in list(market_news)[:2]]
+    trend_titles = [
+        _truncate_text(f"{trend.keyword} 관심도 {trend.traffic or 'N/A'}", 70)
+        for trend in list(datalab_trends)[:2]
+    ]
+    joined_context = " ".join(recent_titles + trend_titles)
+    summary = (
+        f"가장 최근 화제는 {recent_titles[0] if recent_titles else '새 헤드라인 부족'}이며, "
+        "지금은 뉴스 내용 자체보다 그 뉴스가 얼마나 빠르게 확산되는지가 더 중요합니다."
+    )
+    details = (recent_titles + trend_titles)[:2]
+    if joined_context:
+        details.append(_describe_why_it_matters("최근 동향", joined_context))
+    score = _score_texts(recent_titles)
+    positive_view, neutral_view, negative_view, outlook = _build_context_views("최근 동향", joined_context)
+    return _build_card(
+        summary=summary,
+        details=details or ["최신 뉴스 데이터가 적어 다음 실행에서 보강됩니다."],
+        positive_view=positive_view,
+        neutral_view=neutral_view,
+        negative_view=negative_view,
+        outlook=_truncate_text(f"현재 1H 톤은 {_tone_label(score)}입니다. {outlook}", 120),
+    )
+
+
+def _build_daily_window_card(
+    *,
+    market_indices: Sequence[MarketIndex],
+    market_points: Sequence[str],
     sentiment_score: int,
-    sentiment_label: str,
-    holding_insights: Sequence[Dict[str, str]],
-    recent_report_rows: Sequence[Dict[str, Any]],
-    weekly_report_rows: Sequence[Dict[str, Any]],
-    monthly_report_rows: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    first_index = market_indices[0] if market_indices else None
+    joined_context = " ".join(
+        list(market_points)
+        + [f"{item.name} {item.value} {item.investor_summary}" for item in list(market_indices)[:3]]
+    )
+    summary = (
+        f"오늘 장은 {first_index.name if first_index else '주요 지수'}보다도 수급과 뉴스 해석이 더 중요했던 날로, "
+        f"전반 톤은 {('조심스러운 반등' if sentiment_score > 10 else '혼조' if sentiment_score > -10 else '방어적')}에 가깝습니다."
+    )
+    index_details = [
+        _truncate_text(
+            f"{item.name} {item.value} | {item.investor_summary or '수급 데이터 확인 필요'}",
+            120,
+        )
+        for item in list(market_indices)[:2]
+    ]
+    details = index_details or list(market_points[:2])
+    if joined_context:
+        details.append(_describe_why_it_matters("오늘 장", joined_context))
+    positive_view, neutral_view, negative_view, outlook = _build_context_views("오늘 장", joined_context)
+    return _build_card(
+        summary=summary,
+        details=details[:3],
+        positive_view=positive_view,
+        neutral_view=neutral_view,
+        negative_view=negative_view,
+        outlook=outlook,
+    )
+
+
+def _build_weekly_window_card(
+    *,
+    weekly_snapshots: Sequence[Dict[str, Any]],
+    weekly_focus: Sequence[str],
     connector_success_rate_7d: Dict[str, float],
+) -> Dict[str, Any]:
+    health_note, is_low_confidence = _connector_health_note(connector_success_rate_7d)
+    if weekly_focus:
+        summary = f"지난 일주일은 {', '.join(weekly_focus[:2])}가 반복해서 등장해 단기 관심 테마가 비교적 선명했습니다."
+        details = [
+            f"반복 테마: {', '.join(weekly_focus[:3])}",
+            f"최근 리포트 관찰치: {len(weekly_snapshots)}회",
+            health_note,
+        ]
+    else:
+        summary = "최근 일주일은 아직 반복해서 확인된 주도 테마가 뚜렷하지 않아, 단기 유행과 실제 추세를 구분해서 봐야 합니다."
+        details = [f"최근 리포트 관찰치: {len(weekly_snapshots)}회", health_note]
+
+    return _build_card(
+        summary=summary,
+        details=details,
+        positive_view="같은 테마가 여러 번 반복되면 단순 뉴스보다 실제 수급 흐름으로 이어질 가능성이 높아집니다.",
+        neutral_view="1주 데이터는 짧아, 테마가 보여도 아직 추세 전환이라고 단정하긴 이릅니다.",
+        negative_view="누적 데이터가 얇거나 소스 안정성이 낮으면, 최근 유행이 과장됐을 가능성도 열어둬야 합니다." if is_low_confidence else "이번 주 화제가 이어져도 실적이나 수주로 연결되지 않으면 금방 식을 수 있습니다.",
+        outlook="다음 주에는 같은 테마가 다시 나오고, 실제 종목 수익률과 연결되는지 확인해야 합니다.",
+    )
+
+
+def _build_monthly_window_card(
+    *,
+    monthly_snapshots: Sequence[Dict[str, Any]],
+    monthly_focus: Sequence[str],
     connector_success_rate_30d: Dict[str, float],
     avg_feedback_score_30d: float,
     avg_accuracy_30d: float,
