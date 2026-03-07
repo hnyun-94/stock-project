@@ -31,38 +31,64 @@ def _append_card(
     *,
     heading: str,
     card: dict,
-    summary_label: str = "짧은 요약",
-    outlook_label: str = "앞으로 예상",
+    summary_label: str = "한줄 판단",
+    outlook_label: str = "다음 체크포인트",
 ) -> None:
     lines.append(f"### {heading}")
     lines.append("")
 
     stance = card.get("stance")
     if stance:
-        lines.append(f"- 기본 판단: {stance}")
+        lines.append(f"`기본 판단: {stance}`")
+        lines.append("")
 
     summary = card.get("summary")
     if summary:
-        lines.append(f"- {summary_label}: {summary}")
+        lines.append(f"> {summary_label}: {summary}")
+        lines.append("")
 
-    for idx, detail in enumerate(card.get("details", []), 1):
-        lines.append(f"- 근거 {idx}: {detail}")
+    details = card.get("details", [])
+    if details:
+        lines.append("**핵심 근거**")
+        for idx, detail in enumerate(details, 1):
+            lines.append(f"{idx}. {detail}")
+        lines.append("")
 
+    why_it_matters = card.get("why_it_matters")
+    if why_it_matters:
+        lines.append("**왜 중요한가**")
+        lines.append(f"- {why_it_matters}")
+        lines.append("")
+
+    watch_points = card.get("watch_points", [])
+    if watch_points:
+        lines.append("**지금 볼 것**")
+        for item in watch_points:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    lines.append("**세 가지 시각**")
     if card.get("positive_view"):
-        lines.append(f"- 긍정 시각: {card['positive_view']}")
+        lines.append(f"- 긍정: {card['positive_view']}")
     if card.get("neutral_view"):
-        lines.append(f"- 중립 시각: {card['neutral_view']}")
+        lines.append(f"- 중립: {card['neutral_view']}")
     if card.get("negative_view"):
-        lines.append(f"- 부정 시각: {card['negative_view']}")
+        lines.append(f"- 부정: {card['negative_view']}")
+    lines.append("")
+
     if card.get("outlook"):
-        lines.append(f"- {outlook_label}: {card['outlook']}")
+        lines.append(f"**{outlook_label}**")
+        lines.append(f"- {card['outlook']}")
+        lines.append("")
     if card.get("action"):
-        lines.append(f"- 실행 아이디어: {card['action']}")
+        lines.append("**실행 아이디어**")
+        lines.append(f"- {card['action']}")
+        lines.append("")
 
     headers = card.get("table_headers") or []
     rows = card.get("table_rows") or []
     if headers and rows:
-        lines.append("")
+        lines.append("**참고 데이터**")
         lines.append("| " + " | ".join(str(header) for header in headers) + " |")
         lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
         for row in rows:
@@ -156,7 +182,6 @@ def build_structured_markdown_report(report_payload: dict) -> str:
                 lines,
                 heading=section.get("holding", "종목"),
                 card=section,
-                outlook_label="앞으로 예상",
             )
 
     long_term_section = report_payload.get("long_term_section")
