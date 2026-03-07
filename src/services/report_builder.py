@@ -2,9 +2,9 @@
 구조화된 리포트 조립 서비스.
 
 Codex reading guide:
-1. 이 모듈의 public entry point는 `build_report_payload()` 하나입니다.
-2. 위 helper는 자유서술 입력을 짧은 bullet과 비교용 snapshot으로 정규화합니다.
-3. payload 순서는 최종 리포트의 표시 순서와 동일하게 "최근 -> 장기"입니다.
+1. public entry point는 `build_report_payload()` 하나입니다.
+2. builder 책임은 "무엇을 보여줄지"와 "왜 그렇게 판단하는지"를 카드형 payload로 만드는 것입니다.
+3. formatter는 payload를 렌더링만 하므로, 사용자 가치 판단 로직은 이 파일에 모입니다.
 """
 
 from __future__ import annotations
@@ -12,9 +12,57 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from typing import Any, Dict, Iterable, List, Sequence
+from datetime import date, datetime, time as dt_time, timedelta
+from typing import Any, Dict, Iterable, List, Optional, Sequence
+from zoneinfo import ZoneInfo
 
-from src.models import MarketIndex, NewsArticle, SearchTrend
+from src.models import CommunityPost, MarketIndex, NewsArticle, SearchTrend
+
+_KST = ZoneInfo("Asia/Seoul")
+_NEW_YORK = ZoneInfo("America/New_York")
+
+_POSITIVE_KEYWORDS = (
+    "상승", "반등", "실적", "수주", "강세", "기대", "확대", "증가",
+    "개선", "회복", "계약", "출시", "수요", "채택", "순매수", "신고가",
+)
+_NEGATIVE_KEYWORDS = (
+    "하락", "급락", "우려", "소송", "악재", "부진", "감소", "약세",
+    "리스크", "규제", "지연", "둔화", "경쟁", "부담", "매도", "고환율",
+)
+
+_THEME_ALIAS_MAP = {
+    "ai": "인공지능(AI)",
+    "artificialintelligence": "인공지능(AI)",
+    "인공지능": "인공지능(AI)",
+    "ai반도체": "인공지능(AI)",
+}
+
+_GLOSSARY = {
+    "KOSPI": "한국거래소의 대표 주가지수입니다. 한국 대형주 흐름을 볼 때 가장 많이 씁니다.",
+    "KOSDAQ": "기술주와 중소형주 비중이 큰 한국 주가지수입니다. 변동성이 KOSPI보다 큰 편입니다.",
+    "AI": "인공지능입니다. 사람의 언어, 이미지, 데이터를 컴퓨터가 학습해 처리하는 기술입니다.",
+    "HBM": "고대역폭 메모리입니다. AI 서버에 많이 쓰이는 고성능 메모리로, 메모리 반도체 업황을 볼 때 중요합니다.",
+    "GPU": "그래픽처리장치입니다. 지금은 AI 연산용 핵심 칩으로 더 많이 쓰입니다.",
+    "파운드리": "반도체를 대신 생산해 주는 사업입니다. 설계만 하는 회사와 구분할 때 자주 씁니다.",
+    "수급": "누가 사고파는지의 흐름입니다. 개인, 외국인, 기관의 매수·매도 방향을 뜻합니다.",
+    "변동성": "가격이 얼마나 크게 흔들리는지를 말합니다. 클수록 짧은 기간에 오르내림이 큽니다.",
+    "모멘텀": "주가를 움직이는 힘입니다. 실적, 뉴스, 정책, 수급 같은 재료가 여기에 해당합니다.",
+    "밸류에이션": "현재 주가가 기업 가치에 비해 비싼지 싼지 판단하는 기준입니다.",
+    "환율": "원화와 달러 같은 통화의 교환 비율입니다. 수출주와 외국인 수급에 영향을 줍니다.",
+    "순매수": "판 것보다 산 금액이 더 큰 상태입니다. 수급이 받쳐주는지 볼 때 씁니다.",
+}
+
+_NOISE_FRAGMENTS = (
+    "생성 실패",
+    "retryerror",
+    "clienterror",
+    "resource_exhausted",
+    "circuit open",
+    "quota",
+    "응답 누락",
+    "api 호출 실패",
+)
+
 
 # Section A: text normalization helpers
 
@@ -41,8 +89,24 @@ def _split_sentences(text: str) -> List[str]:
         return []
     normalized = re.sub(r"([.!?])\s+", r"\1\n", text)
     normalized = re.sub(r"다\.\s+", "다.\n", normalized)
-    raw_sentences = normalized.splitlines()
-    return [sentence.strip() for sentence in raw_sentences if sentence.strip()]
+    return [sentence.strip() for sentence in normalized.splitlines() if sentence.strip()]
+
+
+def _is_noise_line(text: str) -> bool:
+    lowered = text.lower()
+    return any(fragment in lowered for fragment in _NOISE_FRAGMENTS)
+
+
+def _dedupe_list(items: Iterable[str]) -> List[str]:
+    deduped: List[str] = []
+    seen: set[str] = set()
+    for item in items:
+        normalized = item.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
 
 
 def extract_key_points(markdown_text: str, max_items: int = 3) -> List[str]:
@@ -57,6 +121,8 @@ def extract_key_points(markdown_text: str, max_items: int = 3) -> List[str]:
         line = _clean_markdown_line(raw_line)
         if not line:
             continue
+        if _is_noise_line(line):
+            continue
         if re.fullmatch(r"[🌤️📈🎯💼🌡️🧭🕒🗺️💬⭐\-\s]+", line):
             continue
         if len(line) <= 4:
@@ -66,23 +132,164 @@ def extract_key_points(markdown_text: str, max_items: int = 3) -> List[str]:
             continue
         for sentence in _split_sentences(line):
             normalized = _truncate_text(_clean_markdown_line(sentence))
-            if normalized and normalized not in points:
+            if normalized and not _is_noise_line(normalized) and normalized not in points:
                 points.append(normalized)
             if len(points) >= max_items:
                 return points[:max_items]
 
-    deduped: List[str] = []
-    seen: set[str] = set()
-    for point in points:
-        if point not in seen:
-            deduped.append(point)
-            seen.add(point)
-        if len(deduped) >= max_items:
-            break
-    return deduped[:max_items]
+    return _dedupe_list(points)[:max_items]
 
 
-# Section B: snapshot comparison helpers
+def _score_texts(texts: Sequence[str]) -> int:
+    joined = " ".join(texts)
+    score = sum(1 for keyword in _POSITIVE_KEYWORDS if keyword in joined)
+    score -= sum(1 for keyword in _NEGATIVE_KEYWORDS if keyword in joined)
+    return score
+
+
+def _tone_label(score: int) -> str:
+    if score >= 2:
+        return "긍정 쪽"
+    if score <= -2:
+        return "부정 쪽"
+    return "중립"
+
+
+def _normalize_theme_keyword(keyword: str) -> str:
+    compact = re.sub(r"\s+", "", keyword.strip().lower())
+    if compact in _THEME_ALIAS_MAP:
+        return _THEME_ALIAS_MAP[compact]
+    return keyword.strip()
+
+
+def _dedupe_news_items(news_items: Iterable[NewsArticle]) -> List[NewsArticle]:
+    deduped: List[NewsArticle] = []
+    seen_titles: set[str] = set()
+    for item in news_items:
+        title = item.title.strip()
+        if not title or title in seen_titles:
+            continue
+        seen_titles.add(title)
+        deduped.append(item)
+    return deduped
+
+
+def _contains_any(text: str, keywords: Sequence[str]) -> bool:
+    lowered = text.lower()
+    return any(keyword.lower() in lowered for keyword in keywords)
+
+
+def _topic_subject(subject: str) -> str:
+    trimmed = subject.strip()
+    if not trimmed:
+        return subject
+    last_char = trimmed[-1]
+    if "가" <= last_char <= "힣":
+        has_final_consonant = (ord(last_char) - ord("가")) % 28 != 0
+        return f"{trimmed}{'은' if has_final_consonant else '는'}"
+    return f"{trimmed}는"
+
+
+def _attach_particle(subject: str, final_consonant_particle: str, no_final_consonant_particle: str) -> str:
+    trimmed = subject.strip()
+    if not trimmed:
+        return subject
+    last_char = trimmed[-1]
+    if "가" <= last_char <= "힣":
+        has_final_consonant = (ord(last_char) - ord("가")) % 28 != 0
+        particle = final_consonant_particle if has_final_consonant else no_final_consonant_particle
+        return f"{trimmed}{particle}"
+    return f"{trimmed}{no_final_consonant_particle}"
+
+
+def _describe_risk_factor(joined_context: str) -> str:
+    if _contains_any(joined_context, ("환율", "달러")):
+        return "환율 부담"
+    if _contains_any(joined_context, ("이란", "중동", "전쟁", "지정학")):
+        return "지정학 변수"
+    if _contains_any(joined_context, ("금리", "고용", "연준", "CPI", "물가")):
+        return "금리·경기 변수"
+    if _contains_any(joined_context, ("밸류에이션", "고평가", "과열")):
+        return "밸류에이션 부담"
+    return "기대 선반영"
+
+
+def _describe_why_it_matters(subject: str, joined_context: str) -> str:
+    topic_subject = _topic_subject(subject)
+    if _contains_any(joined_context, ("HBM", "메모리", "DDR", "낸드")):
+        return f"{topic_subject} AI 서버용 메모리 수요와 가격 변화에 민감해, 공급 확대가 확인되면 실적 기대가 빠르게 높아질 수 있습니다."
+    if _contains_any(joined_context, ("GPU", "AI", "인공지능", "데이터센터")):
+        return f"{topic_subject} AI 투자 사이클과 연결돼 있어, 고객사 투자 확대가 확인되면 주가 재평가 속도가 빨라질 수 있습니다."
+    if _contains_any(joined_context, ("파운드리", "공정", "수율")):
+        return f"{topic_subject} 첨단 공정 수주와 생산 안정성이 좋아져야 실적 개선 기대가 실제 가치로 이어지기 쉽습니다."
+    if _contains_any(joined_context, ("외국인", "기관", "순매수", "수급")):
+        return f"{topic_subject} 누가 사는지에 따라 단기 방향이 달라질 수 있어, 뉴스보다 수급 방향이 더 중요할 수 있습니다."
+    if _contains_any(joined_context, ("환율", "달러")):
+        return f"{topic_subject} 환율 변화가 수익성과 외국인 매매 심리에 함께 영향을 줄 수 있어, 높은 환율은 경계 포인트가 됩니다."
+    if _contains_any(joined_context, ("이란", "중동", "전쟁", "지정학")):
+        return f"{topic_subject} 실적과 무관한 지정학 이슈에도 흔들릴 수 있어, 외부 변수로 위험 선호가 갑자기 식을 수 있습니다."
+    if _contains_any(joined_context, ("금리", "고용", "연준", "CPI", "물가")):
+        return f"{topic_subject} 미국 경기와 금리 기대에 따라 성장주 선호가 바뀔 수 있어, 거시 지표 해석이 중요합니다."
+    return f"{topic_subject} 관련 뉴스가 실제 숫자와 자금 유입으로 이어지는지 확인해야 판단의 신뢰도가 높아집니다."
+
+
+def _describe_monitor_points(joined_context: str) -> str:
+    if _contains_any(joined_context, ("HBM", "메모리", "DDR", "낸드")):
+        return "HBM 가격, 공급 계약, 고객사 발주"
+    if _contains_any(joined_context, ("GPU", "AI", "인공지능", "데이터센터")):
+        return "AI 투자 확대 기사, 서버 수요, 고객사 CAPEX"
+    if _contains_any(joined_context, ("파운드리", "공정", "수율")):
+        return "수율 개선, 첨단 공정 수주, 고객사 확보"
+    if _contains_any(joined_context, ("외국인", "기관", "순매수", "수급")):
+        return "외국인·기관 수급, 거래대금, 장중 재매수"
+    if _contains_any(joined_context, ("환율", "달러")):
+        return "원/달러 환율, 외국인 자금 방향, 수출주 반응"
+    if _contains_any(joined_context, ("이란", "중동", "전쟁", "지정학")):
+        return "국제 뉴스 속보, 유가, 안전자산 선호"
+    if _contains_any(joined_context, ("금리", "고용", "연준", "CPI", "물가")):
+        return "미국 지표 발표, 금리 기대 변화, 성장주 반응"
+    return "후속 기사, 실적 가이던스, 거래대금 변화"
+
+
+def _build_context_views(subject: str, joined_context: str) -> tuple[str, str, str, str]:
+    topic_subject = _topic_subject(subject)
+    why_it_matters = _describe_why_it_matters(subject, joined_context)
+    monitor_points = _describe_monitor_points(joined_context)
+    risk_factor = _describe_risk_factor(joined_context)
+    positive_view = f"{monitor_points} 중 두세 가지가 같은 방향으로 확인되면 {subject} 해석은 더 긍정적으로 바뀔 수 있습니다."
+    neutral_view = f"{why_it_matters} 그래서 지금은 한 번의 뉴스보다 후속 숫자와 수급 확인이 먼저입니다."
+    negative_view = f"{topic_subject} {risk_factor}가 다시 커지거나 {monitor_points}가 비면 조정 압력이 커질 수 있습니다."
+    outlook = f"다음 확인 포인트는 {monitor_points}입니다. 이 신호가 이어지면 판단 강도를 높이고, 꺾이면 보수적으로 보는 편이 좋습니다."
+    return positive_view, neutral_view, negative_view, outlook
+
+
+def _pick_primary_market_forces(
+    market_points: Sequence[str],
+    focus_keywords: Sequence[str],
+) -> tuple[str, str]:
+    joined_context = " ".join(market_points)
+    if _contains_any(joined_context, ("AI", "인공지능", "반도체", "HBM", "GPU")):
+        support = f"{', '.join(focus_keywords[:2]) or 'AI·반도체'} 기대"
+    elif _contains_any(joined_context, ("외국인", "기관", "순매수", "수급")):
+        support = "수급 개선 기대"
+    elif _contains_any(joined_context, ("실적", "수주", "계약")):
+        support = "실적 기대"
+    else:
+        support = "일부 대형주로의 자금 쏠림"
+
+    if _contains_any(joined_context, ("환율", "달러")):
+        risk = "높은 환율 부담"
+    elif _contains_any(joined_context, ("이란", "중동", "전쟁", "지정학")):
+        risk = "지정학 변수"
+    elif _contains_any(joined_context, ("금리", "고용", "연준", "CPI", "물가")):
+        risk = "미국 경기·금리 변수"
+    else:
+        risk = "확신이 약한 혼조 장세"
+    return support, risk
+
+
+# Section B: snapshot and schedule helpers
+
 
 def _deserialize_snapshot_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     snapshots: List[Dict[str, Any]] = []
@@ -119,14 +326,14 @@ def _recurring_focus_keywords(snapshots: Sequence[Dict[str, Any]], limit: int = 
     return [keyword for keyword, _ in counter.most_common(limit)]
 
 
-def _format_connector_health(connector_rates: Dict[str, float]) -> str:
+def _connector_health_note(connector_rates: Dict[str, float]) -> tuple[str, bool]:
     if not connector_rates:
-        return "외부 커넥터 누적 데이터가 아직 부족합니다."
+        return "누적 외부 데이터가 아직 적어 중기 판단 신뢰도는 낮습니다.", True
     weakest_source, weakest_rate = min(connector_rates.items(), key=lambda item: item[1])
     strongest_source, strongest_rate = max(connector_rates.items(), key=lambda item: item[1])
     if weakest_rate < 0.8:
-        return f"{weakest_source} 안정성이 낮아({weakest_rate * 100:.0f}%) 해석 시 보수적으로 봐야 합니다."
-    return f"{strongest_source} 포함 주요 커넥터가 안정적입니다(최고 {strongest_rate * 100:.0f}%)."
+        return f"{weakest_source} 성공률이 {weakest_rate * 100:.0f}%로 낮아, 해석은 보수적으로 하는 편이 좋습니다.", True
+    return f"{strongest_source} 포함 주요 커넥터가 안정적입니다(최고 {strongest_rate * 100:.0f}%).", False
 
 
 def _build_change_headlines(
