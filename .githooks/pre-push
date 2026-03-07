@@ -38,6 +38,9 @@ while read local_ref local_sha remote_ref remote_sha; do
   check_commit_size_for_ref "$local_ref" "$local_sha" "$remote_sha"
 done
 
+echo "[pre-push] Git 추적 대상 위생 점검"
+sh scripts/check_git_hygiene.sh
+
 echo "[pre-push] 품질 게이트 실행: tests/services + tests/test_e2e_dryrun.py"
 if command -v uv >/dev/null 2>&1; then
   uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q

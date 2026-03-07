@@ -1,6 +1,6 @@
 #!/bin/sh
 # 문맥 동기화 및 런타임 smoke check 스크립트.
-# - 코드/워크플로우/스킬 변경 시 logging/task/todo 동기화 여부를 경고합니다.
+# - 코드/워크플로우/스킬 변경 시 task/todo/done 계열 문서 동기화 여부를 경고합니다.
 # - runtime-sensitive 변경 시 SQLite 상태 점검 스크립트를 실행합니다.
 
 set -eu
@@ -54,7 +54,7 @@ has_changes_matching() {
 }
 
 CODE_LIKE_PATTERN='^(src/|tests/|\.github/workflows/|scripts/|AGENTS\.md|\.agents/skills/)'
-DOC_LIKE_PATTERN='^(logging/|task/|todo/)'
+DOC_LIKE_PATTERN='^(task/|todo/|done/|README\.md|AGENTS\.md)'
 RUNTIME_PATTERN='^(src/utils/database\.py|src/main\.py|src/services/user_manager\.py|src/services/market_external_connectors\.py|\.github/workflows/report_scheduler\.yml|scripts/check_runtime_state\.py)'
 
 if has_changes_matching "$RUNTIME_PATTERN"; then
@@ -68,8 +68,8 @@ if has_changes_matching "$RUNTIME_PATTERN"; then
 fi
 
 if has_changes_matching "$CODE_LIKE_PATTERN" && ! has_changes_matching "$DOC_LIKE_PATTERN"; then
-  echo "[context-sync] WARNING: 코드/워크플로우/스킬 변경이 있으나 logging/, task/, todo/ 갱신이 감지되지 않았습니다." >&2
-  echo "[context-sync] WARNING: 반복 요구는 문서/로그로 승격해 다음 세션에서 재사용 가능하게 유지하세요." >&2
+  echo "[context-sync] WARNING: 코드/워크플로우/스킬 변경이 있으나 task/, todo/, done/, README.md, AGENTS.md 갱신이 감지되지 않았습니다." >&2
+  echo "[context-sync] WARNING: 로컬 logging/는 커밋 대상이 아니므로 공유가 필요한 내용은 정제 문서로 승격하세요." >&2
   if [ "$STRICT_DOC_SYNC" = "true" ]; then
     echo "[context-sync] STRICT_DOC_SYNC=true 이므로 push를 중단합니다." >&2
     exit 1
