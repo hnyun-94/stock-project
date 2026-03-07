@@ -110,10 +110,49 @@ class TestReportBuilder(unittest.TestCase):
             recent_connector_failures_7d=[
                 {"source_id": "fred", "timestamp": "2026-03-07T08:00:00", "detail": "timeout"}
             ],
+            connector_metric_trends_7d=[
+                {
+                    "source_id": "opendart",
+                    "metric_key": "opendart:earnings",
+                    "latest_day": "2026-03-07",
+                    "latest_value": 6.0,
+                    "prev_1d_value": 4.0,
+                    "prev_7d_value": 2.0,
+                    "delta_1d": 2.0,
+                    "delta_7d": 4.0,
+                    "pct_change_1d": 0.5,
+                    "pct_change_7d": 2.0,
+                },
+                {
+                    "source_id": "opendart",
+                    "metric_key": "opendart:financing",
+                    "latest_day": "2026-03-07",
+                    "latest_value": 1.0,
+                    "prev_1d_value": 1.0,
+                    "prev_7d_value": 1.0,
+                    "delta_1d": 0.0,
+                    "delta_7d": 0.0,
+                    "pct_change_1d": 0.0,
+                    "pct_change_7d": 0.0,
+                },
+                {
+                    "source_id": "fred",
+                    "metric_key": "fred:series_value_x100",
+                    "latest_day": "2026-03-07",
+                    "latest_value": 450.0,
+                    "prev_1d_value": 445.0,
+                    "prev_7d_value": 430.0,
+                    "delta_1d": 5.0,
+                    "delta_7d": 20.0,
+                    "pct_change_1d": 0.0112,
+                    "pct_change_7d": 0.0465,
+                },
+            ],
             reference_time=datetime.fromisoformat("2026-03-07T08:45:00+09:00"),
         )
 
         self.assertEqual(payload["title"], "🌤️ 오늘의 주식 인사이트 리포트")
+        self.assertEqual(payload["reliability_badge"]["label"], "높음")
         self.assertEqual(len(payload["headline_changes"]), 3)
         self.assertEqual(len(payload["time_windows"]), 4)
         self.assertIsNotNone(payload["quick_take"])
@@ -121,11 +160,13 @@ class TestReportBuilder(unittest.TestCase):
         self.assertEqual(payload["session_issue_section"]["title"], "국장 개장 전 공통 이슈")
         self.assertIsNotNone(payload["data_quality_section"])
         self.assertEqual(payload["data_quality_section"]["table_headers"][0], "날짜")
+        self.assertEqual(payload["domain_signal_sections"][0]["title"], "OpenDART 공시 흐름")
         self.assertEqual(payload["theme_sections"][0]["keyword"], "인공지능(AI)")
         self.assertEqual(payload["holding_sections"][0]["holding"], "삼성전자")
         self.assertEqual(snapshot["holding_actions"]["삼성전자"], "유지")
         self.assertIn("인공지능(AI)", snapshot["focus_keywords"])
         self.assertTrue(any(item["term"] == "AI" for item in payload["glossary"]))
+        self.assertTrue(any(item["term"] == "OpenDART" for item in payload["glossary"]))
         self.assertTrue(
             any("왜 중요한가" in detail or "확인할 것" in detail for detail in payload["theme_sections"][0]["details"])
         )
@@ -168,6 +209,7 @@ class TestReportBuilder(unittest.TestCase):
                 }
             ],
             recent_connector_failures_7d=[],
+            connector_metric_trends_7d=[],
         )
 
         serialized = json.dumps(payload, ensure_ascii=False)

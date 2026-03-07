@@ -79,6 +79,18 @@ def build_structured_markdown_report(report_payload: dict) -> str:
     if subtitle:
         lines.extend([f"> {subtitle}", ""])
 
+    reliability_badge = report_payload.get("reliability_badge")
+    if reliability_badge:
+        lines.extend(
+            [
+                (
+                    f"> 리포트 신뢰도: {reliability_badge.get('label', '보통')} "
+                    f"({reliability_badge.get('score', 0)}/100) - {reliability_badge.get('reason', '')}"
+                ),
+                "",
+            ]
+        )
+
     headline_changes = report_payload.get("headline_changes", [])
     if headline_changes:
         lines.extend(["## 🧭 헤드라인 변화", ""])
@@ -119,6 +131,16 @@ def build_structured_markdown_report(report_payload: dict) -> str:
             heading="최근 7일 외부 데이터 품질",
             card=data_quality_section,
         )
+
+    domain_signal_sections = report_payload.get("domain_signal_sections", [])
+    if domain_signal_sections:
+        lines.extend(["## 🧪 외부 지표 해석", ""])
+        for section in domain_signal_sections:
+            _append_card(
+                lines,
+                heading=section.get("title", "외부 지표"),
+                card=section,
+            )
 
     theme_sections = report_payload.get("theme_sections", [])
     if theme_sections:
