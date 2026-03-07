@@ -172,6 +172,21 @@ class Database:
                 ON external_connector_runs(source_id);
             CREATE INDEX IF NOT EXISTS idx_connector_runs_timestamp
                 ON external_connector_runs(timestamp);
+
+            CREATE TABLE IF NOT EXISTS connector_alert_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                alert_type TEXT NOT NULL,
+                window_hours INTEGER NOT NULL DEFAULT 1,
+                fingerprint TEXT NOT NULL,
+                message TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_connector_alerts_fingerprint
+                ON connector_alert_events(fingerprint);
+            CREATE INDEX IF NOT EXISTS idx_connector_alerts_timestamp
+                ON connector_alert_events(timestamp);
         """)
         self._conn.commit()
 
@@ -393,6 +408,104 @@ class Database:
                 rates[row["source_id"]] = round(success / total, 4)
         return rates
 
+    def get_connector_health_summary(self, hours: int = 24) -> Dict[str, Dict[str, Any]]:
+        """최근 N시간 기준 source별 운영 상태 요약을 반환합니다."""
+        since = (datetime.now() - timedelta(hours=hours)).isoformat()
+        cursor = self._conn.execute(
+            (
+                "SELECT source_id, timestamp, status, count, latency_ms, detail "
+                "FROM external_connector_runs "
+                "WHERE timestamp >= ? "
+                "ORDER BY timestamp DESC"
+            ),
+            (since,),
+        )
+
+        summaries: Dict[str, Dict[str, Any]] = {}
+        for row in cursor.fetchall():
+            source_id = row["source_id"]
+            summary = summaries.get(source_id)
+            if summary is None:
+                summary = {
+                    "source_id": source_id,
+                    "sample_count": 0,
+                    "success_count": 0,
+                    "failure_count": 0,
+                    "skip_count": 0,
+                    "success_rate": 0.0,
+                    "failure_rate": 0.0,
+                    "avg_latency_ms": 0,
+                    "latest_status": row["status"],
+                    "latest_detail": row["detail"] or "",
+                    "latest_timestamp": row["timestamp"],
+                    "_latency_total": 0,
+                }
+                summaries[source_id] = summary
+
+            status = row["status"]
+            if status == "skip":
+                summary["skip_count"] += 1
+                continue
+
+            summary["sample_count"] += 1
+            summary["_latency_total"] += max(0, int(row["latency_ms"] or 0))
+            if status == "ok":
+                summary["success_count"] += 1
+            else:
+                summary["failure_count"] += 1
+
+        for summary in summaries.values():
+            sample_count = summary["sample_count"]
+            if sample_count > 0:
+                summary["success_rate"] = round(summary["success_count"] / sample_count, 4)
+                summary["failure_rate"] = round(summary["failure_count"] / sample_count, 4)
+                summary["avg_latency_ms"] = int(summary["_latency_total"] / sample_count)
+            del summary["_latency_total"]
+        return summaries
+
+    def insert_connector_alert_event(
+        self,
+        source_id: str,
+        alert_type: str,
+        window_hours: int,
+        fingerprint: str,
+        message: str = "",
+    ) -> None:
+        """운영 알림 발송 이력을 저장합니다."""
+        self._conn.execute(
+            (
+                "INSERT INTO connector_alert_events "
+                "(timestamp, source_id, alert_type, window_hours, fingerprint, message) "
+                "VALUES (?, ?, ?, ?, ?, ?)"
+            ),
+            (
+                datetime.now().isoformat(),
+                source_id,
+                alert_type,
+                max(1, int(window_hours)),
+                fingerprint,
+                message or "",
+            ),
+        )
+        self._conn.commit()
+
+    def has_recent_connector_alert(
+        self,
+        fingerprint: str,
+        cooldown_minutes: int = 180,
+    ) -> bool:
+        """같은 fingerprint 알림이 최근 쿨다운 구간에 발송됐는지 확인합니다."""
+        since = (datetime.now() - timedelta(minutes=max(0, cooldown_minutes))).isoformat()
+        cursor = self._conn.execute(
+            (
+                "SELECT 1 FROM connector_alert_events "
+                "WHERE fingerprint = ? AND timestamp >= ? "
+                "ORDER BY timestamp DESC LIMIT 1"
+            ),
+            (fingerprint, since),
+        )
+        return cursor.fetchone() is not None
+
     # Section E: report snapshot methods
 
     def insert_report_snapshot(
@@ -459,6 +572,7 @@ class Database:
             "prediction_snapshots",
             "report_snapshots",
             "external_connector_runs",
+            "connector_alert_events",
             "prompt_usage_log",
         ]
         counts: Dict[str, int] = {}

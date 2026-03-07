@@ -134,6 +134,36 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(rates["opendart"], 0.5)
         self.assertEqual(rates["sec_edgar"], 1.0)
 
+    def test_connector_health_summary_excludes_skip_from_samples(self):
+        """운영 요약은 skip을 표본 수에서 제외한다."""
+        self.db.insert_connector_run("opendart", "skip", 0, 50, "disabled")
+        self.db.insert_connector_run("opendart", "ok", 2, 100, "ok")
+        self.db.insert_connector_run("opendart", "error", 0, 300, "timeout")
+
+        summary = self.db.get_connector_health_summary(hours=1)["opendart"]
+        self.assertEqual(summary["sample_count"], 2)
+        self.assertEqual(summary["skip_count"], 1)
+        self.assertEqual(summary["success_count"], 1)
+        self.assertEqual(summary["failure_count"], 1)
+        self.assertEqual(summary["failure_rate"], 0.5)
+        self.assertEqual(summary["avg_latency_ms"], 200)
+        self.assertEqual(summary["latest_status"], "error")
+
+    def test_connector_alert_event_cooldown(self):
+        """같은 fingerprint 알림은 쿨다운 동안 중복 발송으로 간주한다."""
+        fingerprint = "opendart:latest_error"
+        self.assertFalse(self.db.has_recent_connector_alert(fingerprint, cooldown_minutes=60))
+
+        self.db.insert_connector_alert_event(
+            source_id="opendart",
+            alert_type="latest_error",
+            window_hours=1,
+            fingerprint=fingerprint,
+            message="failed",
+        )
+
+        self.assertTrue(self.db.has_recent_connector_alert(fingerprint, cooldown_minutes=60))
+
     # --- 리포트 스냅샷 테스트 ---
 
     def test_insert_and_get_recent_report_snapshot(self):

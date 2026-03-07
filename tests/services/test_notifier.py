@@ -69,3 +69,20 @@ def test_telegram_sender_no_id():
     result = sender.send(user_no_tg, "제목", "내용")
     
     assert result is False
+
+
+@patch("requests.post")
+@patch("os.getenv")
+def test_telegram_sender_send_to_chat_id(mock_getenv, mock_post):
+    """운영 알림용 raw chat_id 전송 테스트"""
+    mock_getenv.return_value = "dummy_token"
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_post.return_value = mock_response
+
+    sender = TelegramSender()
+    result = sender.send_to_chat_id("999", "운영 알림", "본문")
+
+    assert result is True
+    _, kwargs = mock_post.call_args
+    assert kwargs["json"]["chat_id"] == "999"
