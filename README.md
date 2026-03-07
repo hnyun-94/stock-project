@@ -1,106 +1,227 @@
-# 🚀 AI 주식 리포트 자동화 시스템 (Stock Report Automation)
+# Stock Report Automation
 
-이 프로젝트는 다양한 플랫폼(언론 기사, 검색 트렌드, 종목 커뮤니티 민심 등)의 방대한 주식 데이터를 수집하고, **Google Gemini (AI 모델)**을 활용해 각 사용자 맞춤형 인사이트 리포트를 요약해 **무료 푸시(이메일, 카카오톡/텔레그램)로 발송**하는 파이프라인입니다.
+한국 주식시장 데이터를 자동 수집하고, Google Gemini로 구조화 요약한 뒤, 사용자별 맞춤 리포트를 이메일로 발송하는 비동기 파이프라인입니다. 현재 리포트는 "최근 동향 -> 일간 요약 -> 주간 반복 신호 -> 월간 장기 판단" 순서로 읽히도록 재구성되어 있으며, 상단에는 이전 2회 리포트 대비 주요 변경점이 노출됩니다.
 
----
+## 현재 구현 상태
 
-## 🔥 주요 특징 (Key Features)
+- 공통 데이터는 한 번만 수집하고, 사용자별로 관심 키워드/보유 종목 뉴스만 추가 수집합니다.
+- AI 출력은 장문 자유서술보다 짧은 구조화 섹션 중심으로 제한합니다.
+- 커뮤니티 입력은 allowlist + 비속어/민감정보 필터를 거친 안전한 데이터만 사용합니다.
+- 사용자 리포트 이력은 SQLite에 저장되어 헤드라인 변화, 1H/1D/1W/1M 타임윈도우, 장기 플랜 생성에 재사용됩니다.
+- GitHub Actions는 `STOCK_DB_PATH` 기반 SQLite 캐시를 복구/저장하며 실행 전후 health check를 수행합니다.
+- 알림 채널은 현재 `email`이 운영 경로이고, Telegram 전송 레이어는 코드상 준비돼 있으나 메인 파이프라인에서는 비활성화되어 있습니다.
 
-### 1. 다양한 데이터 소스 다원화 병렬 크롤링
+## Codex / 신규 기여자 읽기 순서
 
-- **언론 뉴스**: 네이버/다음/구글 뉴스 크롤링 기반 병합 처리
-- **시장 지수**: 실시간 KOSPI, KOSDAQ 수치 및 투자 주체별(개인, 외인 등) 동향 수집
-- **검색 트렌드**: 네이버 데이터랩 주요 키워드 추출
-- **커뮤니티 (민심 파악)**: 네이버 종토방, 디시 주식 갤러리 인기글, 레딧(WSB) 등 동적/정적 병렬 크롤러
+이 저장소는 문서보다 진입점 몇 개를 읽는 편이 빠릅니다.
 
-### 2. 초개인화 AI 엔진 (Hyper-Personalization)
+1. `AGENTS.md`
+2. `README.md`
+3. `src/main.py`
+4. `src/services/ai_summarizer.py`
+5. `src/services/report_builder.py`
+6. `src/utils/report_formatter.py`
+7. `src/utils/database.py`
+8. `src/services/community_safety.py`
+9. `src/services/topic_news.py`
+10. `tests/test_e2e_dryrun.py`
 
-- **사용자 보유 종목 연계**: 글로벌 거시 시장 상황은 기본, **내 포트폴리오**가 시장에서 어떤 타격을 받고 있는지 연계 분석
-- **Back-Testing Scoring**: 어제 AI가 내놓은 시황 예측과 오늘 시장을 대조하는 채점 보고서 생성 시스템
+작업 전 상태 확인 기본 순서:
 
-### 3. 고도화된 100% 무료 인프라 구조
+```bash
+cat todo/todo.md
+ls -t logging/ | head -1 | xargs -I{} cat logging/{}
+git status --short --branch
+git config --get core.hooksPath
+uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
+```
 
-- **Notion as Database**: 관리자 페이지도, 서버도 필요 없는 완전 무료 [Notion API] 구독자 연동.
-- **GitHub Actions**: 3시간(크론) 주기를 통해 서버에 1원도 들이지 않고 파이프라인 자동 호출.
-- **에러 핸들링 & 보안 심사**: `Webhook Signature` 검증을 통한 무분별한 별점 테러 차단 및 `Circuit Breaker`를 통한 타임아웃 API 데드락 방비 철저.
-
----
-
-## 🏗 시스템 아키텍처
+## 아키텍처 개요
 
 ```mermaid
 graph TD
-    A[Data Sources] -->|aiohttp/Playwright| B(Data Fetchers)
-    B -->|뉴스, 커뮤니티, 트렌드, 지수| C{Async Gathering}
-    C -->|정제된 Context| D((Gemini AI 요약기))
-    N[(Notion DB)] -->|User List & Keywords| D
-    D --> E[Email Sender]
-    D --> F[Telegram Bot Sender]
-    F --> U[End Users]
-    E --> U
-    U -->|별점 클릭| V[FastAPI 웹훅 서버]
-    V -->|Feedback 기록| N
+    A["News / Market / Trends / Community"] --> B["Crawlers"]
+    B --> C["Shared Market Context"]
+    C --> D["community_safety / sentiment / external connectors"]
+    D --> E["ai_summarizer"]
+    N["Notion Users / Prompt DB"] --> E
+    E --> F["report_builder"]
+    G["SQLite report_snapshots / feedbacks / telemetry"] --> F
+    F --> H["report_formatter"]
+    H --> I["notification queue"]
+    I --> J["Email sender"]
+    J --> K["Users"]
+    K --> L["feedback_server"]
+    L --> G
 ```
 
-## 🛠 로컬 개발 환경 구성 및 실행 방법
+### 런타임 흐름
 
-### 1. 의존성 (Dependencies)
+1. `src/main.py`가 소스 정책을 검증하고 프롬프트 캐시를 예열합니다.
+2. 시장 지수, 공통 뉴스, 커뮤니티, 데이터랩 트렌드를 `asyncio.gather`로 병렬 수집합니다.
+3. 커뮤니티 데이터는 `src/services/community_safety.py`에서 필터링합니다.
+4. 공통 시황 요약은 `src/services/ai_summarizer.py`가 생성합니다.
+5. 사용자 목록은 Notion에서 페이지네이션으로 읽습니다.
+6. 각 사용자에 대해 관심 키워드/보유 종목 뉴스만 추가 수집합니다.
+7. AI는 테마 요약과 보유 종목별 인사이트를 생성합니다.
+8. `src/services/report_builder.py`가 직전 리포트 스냅샷과 비교해 헤드라인 변화와 타임윈도우 payload를 만듭니다.
+9. `src/utils/report_formatter.py`가 최종 Markdown을 렌더링하고, 발송 전 SQLite에 스냅샷을 저장합니다.
+10. 발송 후 사용자는 HMAC 서명된 피드백 링크를 통해 평가를 남기고, 피드백은 다시 SQLite에 누적됩니다.
 
-이 프로젝트는 초고속 패키지 매니저인 [`uv`](https://github.com/astral-sh/uv)와 `Python 3.13`을 기반으로 합니다.
+## 리포트 구조
+
+현재 리포트의 의도는 "5~10분 내 파악 가능한 운영형 리포트"입니다.
+
+- `헤드라인 변화`: 직전 2회 리포트 대비 감정 점수, 장세 톤, 새 테마, 보유 종목 대응 변화
+- `지금 바로 볼 것`: 가장 최근 시장 포인트 2~3개
+- `1H / 1D / 1W / 1M`: 최근 뉴스, 오늘 장 마감, 최근 1주 반복 신호, 최근 1개월 장기 판단
+- `관심 테마 요약`: 키워드별 2~3개 bullet
+- `보유 종목별 인사이트`: 종목별 상태, 핵심 근거, 액션 한 줄
+- `장기 플랜`: 월간 누적 신호와 데이터 신뢰도를 반영한 추적 계획
+
+## 디렉토리 맵
+
+```text
+src/
+  main.py                         메인 파이프라인 진입점
+  models.py                       DTO 모음
+  crawlers/                       뉴스/시장/커뮤니티 수집기
+  services/
+    ai_summarizer.py              Gemini 호출, JSON 모드, fallback
+    report_builder.py             리포트 payload 조립, 스냅샷 비교
+    topic_news.py                 키워드/보유 종목 뉴스 병렬 수집
+    community_safety.py           커뮤니티 allowlist / 민감 표현 필터
+    user_manager.py               Notion 사용자 조회 + pagination
+    market_external_connectors.py 무료 외부 소스 텔레메트리 수집
+    notifier/                     이메일/텔레그램/큐 워커
+  utils/
+    report_formatter.py           구조화 payload -> Markdown/HTML
+    database.py                   SQLite 영속화, self-healing, runtime counts
+    cache.py                      TTL 캐시
+    deduplicator.py               뉴스 중복 제거
+    sentiment.py                  감정 점수 산출
+tests/
+  services/                       서비스 계층 회귀 테스트
+  test_e2e_dryrun.py              외부 API 없이 핵심 데이터 흐름 검증
+.github/workflows/
+  report_scheduler.yml            3시간 주기 실행 + SQLite 상태 복구
+scripts/
+  check_runtime_state.py          SQLite health check
+  check_context_sync.sh           코드/문서 동기화 점검
+  check_commit_size.sh            커밋 400줄 제한 검증
+```
+
+## 데이터 저장소
+
+### Notion
+
+- 사용자 구독 정보: `NOTION_DATABASE_ID`
+- 프롬프트 템플릿: `NOTION_PROMPT_DB_ID`
+
+Notion은 운영 입력 저장소입니다. 실행 중 누적되는 운영 상태는 Notion이 아니라 SQLite에 저장합니다.
+
+### SQLite
+
+- 기본 경로: `data/stock_project.db`
+- 오버라이드: `STOCK_DB_PATH`
+- 주요 테이블:
+  - `feedbacks`
+  - `prediction_snapshots`
+  - `report_snapshots`
+  - `prompt_usage_log`
+  - `external_connector_runs`
+
+`src/utils/database.py`는 WAL 모드, 손상 복구, close 시 checkpoint, 경로 기반 싱글톤 재초기화를 처리합니다.
+
+## GitHub Actions 동작 방식
+
+`/.github/workflows/report_scheduler.yml`은 3시간마다 실행되며 다음을 보장합니다.
+
+1. `STOCK_DB_PATH` 기준 SQLite 디렉토리를 준비합니다.
+2. 직전 DB 캐시(`.db`, `-wal`, `-shm`)를 복구합니다.
+3. 실행 전 `scripts/check_runtime_state.py`로 DB 상태를 점검합니다.
+4. `uv run python -m src.main`으로 리포트 파이프라인을 실행합니다.
+5. 실행 후 다시 DB 상태를 점검하고 캐시를 저장합니다.
+
+이 구조 덕분에 stateless runner에서도 리포트 스냅샷과 피드백 누적값을 이어갈 수 있습니다.
+
+## 안전 장치
+
+- `community_safety.py`: 기본 allowlist는 보수적으로 운영하며 고위험 커뮤니티 표현은 제거합니다.
+- `safe_gemini_call()`: semaphore, 재시도, circuit breaker, 모델 자동 대체를 포함합니다.
+- `feedback_server.py`: HMAC 서명 검증 없이는 피드백을 받지 않습니다.
+- `database.py`: 손상 DB 발견 시 백업 후 재생성합니다.
+- `market_source_governance.py`: 무료 소스 정책/호출량을 실행 전 점검합니다.
+
+## 로컬 실행
+
+### 의존성 설치
 
 ```bash
-# uv 패키지 매니저 설치
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 프로젝트 의존성 세팅 및 가상환경 구성
 uv sync --frozen
 ```
 
-### 2. 환경 변수 구성 (.env)
-
-프로젝트 루트 폴더에 위치한 `.env.template`을 복사하여 `.env`를 만드세요.  
-발급이 필요한 주요 `API Key`와 `Token` 값은 아래와 같습니다. 구체적 발급 방법은 `.env` 파일 내부 주석을 참고하세요.
+### 필수 환경 변수
 
 ```env
-GEMINI_API_KEY="..."              # Google AI Studio
-NOTION_TOKEN="..."                # 노션 서버 연동
-NOTION_DATABASE_ID="..."          # 주소록 관리자 페이지
-SENDER_EMAIL="..."                # 리포트 발송용 이메일
-SENDER_APP_PASSWORD="..."         # 구글 계정 2단계 앱 비밀번호
-TELEGRAM_BOT_TOKEN="..."          ...
-WEBHOOK_SECRET="..."              # 랜덤 생성 텍스트 보안키
+GEMINI_API_KEY=...
+NOTION_TOKEN=...
+NOTION_DATABASE_ID=...
+NOTION_PROMPT_DB_ID=...
+SENDER_EMAIL=...
+SENDER_APP_PASSWORD=...
+WEBHOOK_SECRET=...
 ```
 
-### 3. 단일 실행 (Manual Run)
+선택 환경 변수:
 
-즉시 스크립트를 수동으로 구동하여 리포트 발송까지 테스트하고 싶다면 다음 명령어를 사용하세요.
+- `GEMINI_MODEL`, `GEMINI_MODEL_CANDIDATES`
+- `STOCK_DB_PATH`
+- `ACTIVE_MARKET_SOURCES`
+- `COMMUNITY_ENABLED_SOURCES`
+- `PIPELINE_RUN_INTERVAL_HOURS`
+
+### 수동 실행
 
 ```bash
 uv run python -m src.main
 ```
 
----
-
-## 🐳 Docker 분산 환경 실행 (마이크로서비스)
-
-피드백 별점 서버 (FastAPI)와 3시간 크론 파이프라인을 완전히 분리 구동하려면 로컬에 `Docker`가 설치되어 있어야 합니다.
+### 피드백 서버 실행
 
 ```bash
-# 컨테이너 빌드 및 백그라운드 런칭 (-d옵션)
-docker-compose up -d --build
+uv run python -m src.apps.feedback_server
+```
 
-# 실행중인 서버 로그 체크
+### Docker 실행
+
+```bash
+docker-compose up -d --build
 docker-compose logs -f feedback-server
 ```
 
----
+## 테스트와 품질 게이트
 
-## ✅ TODO & Workflow 상태 (Phase 5)
+로컬 기본 게이트:
 
-이 프로젝트는 다음의 개발과정(애자일) 관례를 통해 탄생했습니다.
+```bash
+uv run python -m pytest tests/services/ tests/test_e2e_dryrun.py -q
+scripts/check_commit_size.sh --range origin/master..HEAD --max-lines 400
+sh scripts/check_context_sync.sh --range origin/master..HEAD
+```
 
-- [x] **AI 성과 백테스팅 (완료)** : `backtesting_scorer.py` 구현
-- [x] **Docker 분산 환경 세팅 (완료)** : `Dockerfile` 및 `docker-compose.yml`
-- [x] **보안 검토 (완료)** : 피드백 수집기(HMAC-SHA256) 도입
+Git hook:
 
-_※ 프로젝트의 매일 갱신되는 작업 히스토리는 [logging](logging/) 폴더에 상세 기록되어 관리됩니다._
+- `.githooks/pre-push`
+- `git config core.hooksPath .githooks`
+
+`pre-push`는 커밋 크기, 문맥 동기화, 서비스/E2E 테스트를 함께 검사합니다.
+
+## 관련 문서
+
+- `AGENTS.md`: Codex 작업 규칙과 프로젝트 운영 규칙
+- `todo/todo.md`: 현재 우선순위와 백로그
+- `logging/YYYY-MM-DD.md`: 실행 로그와 세션별 작업 이력
+- `done/completed_work_report.md`: 최근 완료 기준선
+- `task/report_redesign_multi_role_plan.md`: 리포트 재설계 검토/실행 문서
+- `task/github_actions_runtime_review_and_execution_plan.md`: GitHub Actions + SQLite 런타임 검토 문서
