@@ -1,0 +1,45 @@
+name: PR Quality Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 기준 브랜치 fetch
+        run: |
+          BASE_REF="${GITHUB_BASE_REF:-master}"
+          git fetch origin "${BASE_REF}" --depth=1
+
+      - name: Python 환경 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: uv 설치
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: 의존성 설치
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          uv sync --frozen
+
+      - name: 품질 게이트 실행
+        env:
+          STRICT_DOC_SYNC: "true"
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          BASE_REF="${GITHUB_BASE_REF:-${GITHUB_REF_NAME}}"
+          sh scripts/run_quality_gate.sh --range "origin/${BASE_REF}..HEAD"
