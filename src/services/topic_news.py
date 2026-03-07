@@ -43,6 +43,7 @@ async def collect_topic_news(
             uncached_topics.append(topic)
 
     if uncached_topics:
+        # 캐시 miss 토픽만 3개 뉴스 소스로 fan-out 한 뒤 dedupe/enrich/cache 순으로 정리합니다.
         crawl_tasks = []
         for topic in uncached_topics:
             crawl_tasks.extend(

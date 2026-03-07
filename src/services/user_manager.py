@@ -1,8 +1,8 @@
 """
 사용자 관리 서비스 모듈.
 
-Notion API를 활용하여 사용자가 생성한 데이터베이스(Database)에서
-주식 리포트 수신을 희망하는 사용자 목록(이름, 이메일, 관심 키워드)을 불러옵니다.
+현재 운영 경로는 Notion DB를 페이지네이션으로 순회하면서
+리포트 발송 대상(User DTO)만 추려 반환하는 것입니다.
 """
 
 import os
@@ -95,6 +95,7 @@ def fetch_active_users() -> List[User]:
         users = []
         next_cursor = None
         while True:
+            # 페이지네이션을 여기서 끝까지 처리해 main.py는 User 리스트만 신뢰하게 합니다.
             payload: Dict[str, Any] = {}
             if next_cursor:
                 payload["start_cursor"] = next_cursor

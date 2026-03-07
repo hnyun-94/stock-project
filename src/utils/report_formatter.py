@@ -1,8 +1,10 @@
 """
-마크다운 리포트 포매팅 유틸리티.
+리포트 렌더링 유틸리티.
 
-AI 모델과 데이터 크롤러가 수집/생성한 마크다운 형태의 텍스트들을
-HTML 구조로 매핑하여 이메일 본문이나 메신저 포맷으로 변환합니다.
+Codex reading guide:
+1. 현재 운영 경로는 `build_structured_markdown_report()`입니다.
+2. `build_markdown_report()`는 과거 자유서술 리포트 호환용 fallback입니다.
+3. HTML 변환은 마지막 단계에서만 수행되며, 내부 표준 표현은 Markdown입니다.
 """
 
 import markdown
@@ -18,6 +20,7 @@ def build_markdown_report(market_summary_md: str, theme_briefings_md: list) -> s
     Returns:
         str: 통합된 마크다운 문자열
     """
+    # Legacy renderer: 구조화 payload 도입 전 포맷을 유지해야 할 때만 사용합니다.
     overall_md = "🌤️ 오늘의 주식 인사이트 리포트\n\n"
     overall_md += "---\n\n"
     overall_md += market_summary_md + "\n\n"
@@ -36,6 +39,7 @@ def build_markdown_report(market_summary_md: str, theme_briefings_md: list) -> s
 
 def build_structured_markdown_report(report_payload: dict) -> str:
     """구조화된 payload를 읽기 쉬운 Markdown 리포트로 렌더링합니다."""
+    # payload가 이미 최신 -> 장기 순으로 정렬되어 있으므로 formatter는 순서를 바꾸지 않습니다.
     lines = [report_payload.get("title", "🌤️ 오늘의 주식 인사이트 리포트"), ""]
 
     subtitle = report_payload.get("subtitle")
@@ -103,6 +107,7 @@ def build_structured_markdown_report(report_payload: dict) -> str:
         lines.extend(["---", "", f"*{footer_note}*"])
 
     return "\n".join(lines).strip() + "\n"
+
 
 def markdown_to_html(markdown_str: str) -> str:
     """제공된 마크다운을 이메일 발송용 CSS가 입혀진 HTML로 변환합니다."""

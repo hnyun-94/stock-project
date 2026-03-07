@@ -1,9 +1,10 @@
 """
-주식 리포트 자동화 생성 및 이메일 발송 파이프라인 진입점.
+주식 리포트 자동화 파이프라인 진입점.
 
-1. 크롤링 데이터를 기반으로 AI 요약을 생성합니다.
-2. Notion에서 수신 대상자별 관심 키워드를 조회합니다.
-3. 리포트를 HTML로 포매팅하여 대상자들에게 이메일을 발송합니다.
+Codex reading guide:
+1. `run_pipeline()`이 현재 운영 경로의 단일 오케스트레이터입니다.
+2. 실행 순서는 공통 데이터 수집 -> 안전 필터/지표 계산 -> 사용자별 개인화 -> 리포트 저장/발송입니다.
+3. 주요 외부 의존성은 Notion, Gemini, SQLite, 이메일 큐입니다.
 """
 
 import os
@@ -74,6 +75,7 @@ def _parse_int_env(env_key: str, default_value: int) -> int:
 
 
 def _is_truthy(raw: str) -> bool:
+    """불리언 성격의 환경변수 문자열을 판별합니다."""
     return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
@@ -135,32 +137,18 @@ def _run_source_governance_check() -> None:
 
 
 async def run_pipeline() -> None:
-    """
-    역할 (Role):
-        주식 리포트 자동화 파이프라인의 핵심 제어 함수(진입점)입니다.
-        크롤러를 통해 실시간 시장 데이터(뉴스, 지수, 커뮤니티, 트렌드)를 병렬 수집하고,
-        Notion API에서 구독자 목록과 개인 관심/보유 종목을 가져옵니다.
-        수집된 데이터는 Gemini(AI)를 거쳐 브리핑/요약 문자열로 가공된 뒤
-        각 사용자가 설정한 채널(Email, Telegram 등)로 맞춤형 발송됩니다.
-
-    입력 (Input):
-        없음 (None) - 외부 설정(.env), 데이터베이스(Notion) 및 크롤링 결과 데이터를 기반으로 동작합니다.
-
-    반환값 (Output / Returns):
-        없음 (None) - 실행 성공 여부는 콘솔 및 log 파일(`logging/` 폴더)에 자동으로 기록됩니다.
-    """
+    """리포트 생성, 이력 저장, 발송까지 포함한 전체 배치를 실행합니다."""
     global_logger.info("=== 🚀 주식 리포트 생성 파이프라인 시작 ===")
 
     # 실행 시작 전 데이터 소스 정책/무료 한도 점검
     _run_source_governance_check()
 
-    # 0. Notion에서 동적 프롬프트 설정 (미리 캐싱) [Task 6.21, REQ-Q07]
-    # 동기 함수를 asyncio.to_thread()로 래핑하여 이벤트 루프 블로킹 방지
+    # Phase 0: 런타임 캐시와 발송 워커를 준비합니다.
     await asyncio.to_thread(fetch_prompts_from_notion)
     
-    global_message_queue.start_workers() # 워커 스레드 시작
+    global_message_queue.start_workers()
     try:
-        # 1. 공통 시황 데이터 수집 (병렬 처리)
+        # Phase 1: 모든 사용자에게 공통인 시장 컨텍스트를 한 번만 수집합니다.
         global_logger.info("[1/5] 시장 지수 및 공통 뉴스 수집 중... (비동기 병렬)")
         market_indices, market_news, dc_posts, reddit_posts, datalab_trends = await asyncio.gather(
             get_market_indices(),
@@ -170,7 +158,7 @@ async def run_pipeline() -> None:
             get_naver_datalab_trends()
         )
         
-        # 2. 공통 시황 브리핑 생성
+        # Phase 2: 공통 컨텍스트를 안전화하고, 공용 요약과 지표를 계산합니다.
         global_logger.info("[2/5] AI 시장 시황 요약 중...")
         market_summary_md = await generate_market_summary(market_indices, market_news, datalab_trends)
 
@@ -197,7 +185,7 @@ async def run_pipeline() -> None:
             max_items=4,
         )
 
-        # 3. 사용자 정보 조회 [Task 6.21, REQ-Q07]
+        # Phase 3: 수신 대상자를 로드합니다. Notion I/O는 to_thread로 감쌉니다.
         global_logger.info("[3/5] Notion에서 수신 대상자 조회 중...")
         users = await asyncio.to_thread(fetch_active_users)
         
@@ -232,7 +220,7 @@ async def run_pipeline() -> None:
         avg_feedback_score_30d = db.get_average_score(days=30)
         avg_accuracy_30d = db.get_average_accuracy(days=30)
 
-        # 4. 개별 대상자 맞춤형 리포트 발송
+        # Phase 4: 사용자별 추가 수집, AI 개인화, 스냅샷 비교, 발송을 처리합니다.
         for idx, user in enumerate(users, 1):
             name = user.name
             
@@ -248,7 +236,7 @@ async def run_pipeline() -> None:
                 cache_prefix="topic_news",
             )
 
-            # 수집된 데이터를 바탕으로 AI 테마 브리핑 요약 (Gemini Batch 1회 호출)
+            # 테마 브리핑은 batch 1회 호출을 우선 사용하고, 누락 건만 개별 fallback 합니다.
             theme_items = []
             for keyword in keywords_to_search:
                 global_logger.info(f"      - '{keyword}' 테마 배치 요약 입력 구성 중...")
@@ -307,7 +295,7 @@ async def run_pipeline() -> None:
                 avg_accuracy_30d=avg_accuracy_30d,
             )
 
-            # 6. 리포트 포매팅 및 메일/메신저 발송
+            # 최종 리포트는 "최근 -> 장기" 순서를 유지한 payload를 렌더링합니다.
             global_logger.info(f"[5/5] '{name}'님 채널별 알림 전송 중... (등록된 채널: {', '.join(user.channels)})")
             
             report_md_content = build_structured_markdown_report(report_payload)
@@ -329,7 +317,7 @@ async def run_pipeline() -> None:
                     snapshot_text,
                 )
             
-            # 사용자 맞춤 피드백 양식 꼬리말 동적 삽입 (별점 1~5 개별 HMAC 서명 링크)
+            # 피드백 링크는 수신자별 HMAC 서명이 포함된 상태로 후처리합니다.
             feedback_links = generate_feedback_links_html(name)
             feedback_footer = f"\n\n---\n💬 오늘 리포트 어떠셨나요?\n\n{feedback_links}\n"
             report_md_content += feedback_footer
@@ -364,8 +352,8 @@ async def run_pipeline() -> None:
         close_db()
 
 async def main_with_timeout():
+    """전역 타임아웃을 걸어 외부 의존성 hang이 배치를 무기한 점유하지 않게 합니다."""
     try:
-        # 전체 파이프라인(백그라운드 크롤링, AI 요약, 발송 등)이 무한정 대기하는 것을 방지하고자 5분(300초) 타임아웃 설정
         await asyncio.wait_for(run_pipeline(), timeout=300.0)
     except asyncio.TimeoutError:
         global_logger.error("🚨 전역 타임아웃 발생: 파이프라인 실행이 5분을 초과하여 강제 종료되었습니다. (원인: 크롤링 타임아웃 또는 외부 API 응답 지연)")
