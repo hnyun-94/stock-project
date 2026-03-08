@@ -85,11 +85,41 @@ class TestReportBuilder(unittest.TestCase):
             "sentiment_score": -30,
             "focus_keywords": ["2차전지"],
             "holding_actions": {"삼성전자": "관찰"},
+            "scoreboard_metrics": {
+                "KOSPI": {"kind": "market", "value": 2580.0, "display": "2580.00", "daily_change": 3.2, "decimals": 2},
+                "KOSDAQ": {"kind": "market", "value": 840.0, "display": "840.00", "daily_change": -2.0, "decimals": 2},
+                "시장 심리": {"kind": "sentiment", "value": -30.0, "display": "-30 / 관망 ███░░░░░", "daily_change": None, "decimals": 0},
+                "검색 관심": {"kind": "search_interest", "value": 75.0, "display": "AI 75 ████░░", "daily_change": None, "decimals": 0, "keyword": "AI"},
+            },
+        }
+        day_snapshot = {
+            "market_regime": "관망",
+            "sentiment_score": 8,
+            "focus_keywords": ["AI"],
+            "holding_actions": {"삼성전자": "관찰"},
+            "scoreboard_metrics": {
+                "KOSPI": {"kind": "market", "value": 2638.0, "display": "2638.00", "daily_change": 4.2, "decimals": 2},
+                "KOSDAQ": {"kind": "market", "value": 855.0, "display": "855.00", "daily_change": 5.0, "decimals": 2},
+                "시장 심리": {"kind": "sentiment", "value": 8.0, "display": "+8 / 관망 ████░░░░", "daily_change": None, "decimals": 0},
+                "검색 관심": {"kind": "search_interest", "value": 80.0, "display": "AI 80 ████░░", "daily_change": None, "decimals": 0, "keyword": "AI"},
+            },
         }
         recent_rows = [
             {
                 "headline": "이전 리포트",
-                "timestamp": "2026-03-06T09:00:00",
+                "timestamp": "2026-03-06T09:00:00+09:00",
+                "snapshot_json": json.dumps(day_snapshot, ensure_ascii=False),
+            }
+        ]
+        weekly_rows = [
+            {
+                "headline": "이전 리포트",
+                "timestamp": "2026-03-06T09:00:00+09:00",
+                "snapshot_json": json.dumps(day_snapshot, ensure_ascii=False),
+            },
+            {
+                "headline": "1주 전 리포트",
+                "timestamp": "2026-02-28T09:00:00+09:00",
                 "snapshot_json": json.dumps(previous_snapshot, ensure_ascii=False),
             }
         ]
@@ -98,8 +128,11 @@ class TestReportBuilder(unittest.TestCase):
             user_name="홍길동",
             market_summary_md="## 📈 오늘의 시장 요약\nAI와 반도체가 반등을 주도했습니다. 수급은 관망에서 개선으로 이동했습니다.",
             market_indices=[
-                MarketIndex(name="KOSPI", value="2650.10", change="", investor_summary="외국인 순매수"),
-                MarketIndex(name="KOSDAQ", value="860.22", change="", investor_summary="기관 순매수"),
+                MarketIndex(name="KOSPI", value="2650.10", change="+12.10", investor_summary="외국인 순매수"),
+                MarketIndex(name="KOSDAQ", value="860.22", change="+5.22", investor_summary="기관 순매수"),
+                MarketIndex(name="미국 USD", value="1485.00", change="+6.00", investor_summary="하나은행 기준"),
+                MarketIndex(name="WTI", value="90.90", change="+9.89", investor_summary="NYMEX 기준"),
+                MarketIndex(name="국제 금", value="5158.70", change="+80.00", investor_summary="COMEX 기준"),
             ],
             market_news=[NewsArticle(title="반도체 업종 반등", link="https://news1")],
             datalab_trends=[SearchTrend(keyword="AI", traffic="92")],
@@ -146,8 +179,8 @@ class TestReportBuilder(unittest.TestCase):
             },
             community_posts=[CommunityPost(title="개장 전엔 AI 반도체가 핵심이라는 토론", link="https://community1")],
             recent_report_rows=recent_rows,
-            weekly_report_rows=recent_rows,
-            monthly_report_rows=recent_rows,
+            weekly_report_rows=weekly_rows,
+            monthly_report_rows=weekly_rows,
             connector_success_rate_7d={"opendart": 1.0},
             connector_success_rate_30d={"opendart": 0.95},
             avg_feedback_score_30d=4.2,
@@ -223,9 +256,20 @@ class TestReportBuilder(unittest.TestCase):
         self.assertEqual(payload["reliability_badge"]["gauge"], "█████████░")
         self.assertEqual(len(payload["headline_changes"]), 3)
         self.assertEqual(payload["decision_tiles"][0]["label"], "시장 톤")
-        self.assertEqual(payload["market_scoreboard"]["headers"][0], "항목")
-        self.assertTrue(any(row[0] == "시장 심리" and "█" in row[1] for row in payload["market_scoreboard"]["rows"]))
-        self.assertTrue(any(row[0] == "검색 관심" and "█" in row[1] for row in payload["market_scoreboard"]["rows"]))
+        self.assertEqual(payload["market_scoreboard"]["headers"][0], "소주제")
+        kospi_row = next(row for row in payload["market_scoreboard"]["rows"] if row[1] == "KOSPI")
+        usd_row = next(row for row in payload["market_scoreboard"]["rows"] if row[1] == "미국 USD")
+        sentiment_row = next(row for row in payload["market_scoreboard"]["rows"] if row[1] == "시장 심리")
+        trend_row = next(row for row in payload["market_scoreboard"]["rows"] if row[1] == "검색 관심")
+        self.assertEqual(kospi_row[0], "시장 지수")
+        self.assertTrue(kospi_row[3].startswith("▲ +12.10"))
+        self.assertTrue(kospi_row[4].startswith("▲ +70.10"))
+        self.assertEqual(usd_row[0], "매크로 지표")
+        self.assertIn("환율", usd_row[5])
+        self.assertEqual(sentiment_row[0], "심리·관심")
+        self.assertIn("█", sentiment_row[2])
+        self.assertTrue(trend_row[3].startswith("▲ +12"))
+        self.assertTrue(payload["market_scoreboard"]["notes"])
         self.assertEqual(len(payload["insight_lenses"]), 3)
         self.assertEqual(payload["insight_lenses"][0]["title"], "경제 온도")
         self.assertEqual(payload["insight_lenses"][1]["title"], "자금 흐름")
@@ -257,6 +301,8 @@ class TestReportBuilder(unittest.TestCase):
         self.assertGreaterEqual(len(payload["holding_sections"][0]["details"]), 3)
         self.assertEqual(snapshot["holding_actions"]["삼성전자"], "유지")
         self.assertIn("인공지능(AI)", snapshot["focus_keywords"])
+        self.assertIn("scoreboard_metrics", snapshot)
+        self.assertEqual(snapshot["scoreboard_metrics"]["KOSPI"]["value"], 2650.10)
         self.assertTrue(any(item["term"] == "AI" for item in payload["glossary"]))
         self.assertTrue(any(item["term"] == "OpenDART" for item in payload["glossary"]))
         self.assertTrue(payload["theme_sections"][0]["why_it_matters"])

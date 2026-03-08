@@ -5,15 +5,47 @@
 투자자별 매매동향(개인/외국인/기관)을 수집하여 시장의 전반적인 분위기를 파악합니다.
 """
 
-from typing import List, Dict, Any
-import aiohttp
-from src.crawlers.http_client import get_session
-from bs4 import BeautifulSoup
+import re
 import traceback
+from typing import List
 
+import aiohttp
+from bs4 import BeautifulSoup
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+from src.crawlers.http_client import get_session
 from src.models import MarketIndex
 from src.utils.logger import global_logger
-from tenacity import retry, wait_exponential, stop_after_attempt
+
+
+def _extract_signed_change(container, selector: str) -> str:
+    """상승/하락 방향을 포함한 변화값 문자열을 반환합니다."""
+    change_tag = container.select_one(selector)
+    if not change_tag:
+        return ""
+
+    raw_value = change_tag.get_text(strip=True)
+    if not raw_value:
+        return ""
+    if raw_value.startswith(("+", "-")):
+        return raw_value
+
+    class_names = container.get("class", [])
+    blind_text = " ".join(
+        blind.get_text(strip=True)
+        for blind in container.select(".blind")
+        if blind.get_text(strip=True)
+    )
+    if any(token in class_names for token in ("up", "point_up")) or "+" in blind_text or "상승" in blind_text:
+        return f"+{raw_value}"
+    if any(token in class_names for token in ("dn", "point_dn")) or "-" in blind_text or "하락" in blind_text:
+        return f"-{raw_value}"
+    return raw_value
+
+
+def _clean_numeric_text(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or "")).strip()
+
 
 @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3))
 async def get_market_indices() -> List[MarketIndex]:
@@ -60,7 +92,9 @@ async def get_market_indices() -> List[MarketIndex]:
         # KOSPI 수집
         kospi_area = soup.select_one(".kospi_area")
         if kospi_area:
-            value = kospi_area.select_one(".num_quot .num").get_text(strip=True) if kospi_area.select_one(".num_quot .num") else "0"
+            quote_tag = kospi_area.select_one(".num_quot")
+            value = _clean_numeric_text(quote_tag.select_one(".num").get_text(strip=True)) if quote_tag and quote_tag.select_one(".num") else "0"
+            change = _extract_signed_change(quote_tag, ".num2") if quote_tag else ""
             inv_dict = {}
             dl_tag = kospi_area.select_one("dl")
             if dl_tag:
@@ -68,12 +102,14 @@ async def get_market_indices() -> List[MarketIndex]:
                     inv_dict[dt.get_text(strip=True)] = dd.get_text(strip=True)
             inv_str = ", ".join([f"{k}: {v}" for k, v in inv_dict.items()])
             
-            market_list.append(MarketIndex(name="KOSPI", value=value, change="", investor_summary=inv_str))
+            market_list.append(MarketIndex(name="KOSPI", value=value, change=change, investor_summary=inv_str))
         
         # KOSDAQ 수집
         kosdaq_area = soup.select_one(".kosdaq_area")
         if kosdaq_area:
-            value = kosdaq_area.select_one(".num_quot .num").get_text(strip=True) if kosdaq_area.select_one(".num_quot .num") else "0"
+            quote_tag = kosdaq_area.select_one(".num_quot")
+            value = _clean_numeric_text(quote_tag.select_one(".num").get_text(strip=True)) if quote_tag and quote_tag.select_one(".num") else "0"
+            change = _extract_signed_change(quote_tag, ".num2") if quote_tag else ""
             inv_dict = {}
             dl_tag = kosdaq_area.select_one("dl")
             if dl_tag:
@@ -81,7 +117,7 @@ async def get_market_indices() -> List[MarketIndex]:
                     inv_dict[dt.get_text(strip=True)] = dd.get_text(strip=True)
             inv_str = ", ".join([f"{k}: {v}" for k, v in inv_dict.items()])
             
-            market_list.append(MarketIndex(name="KOSDAQ", value=value, change="", investor_summary=inv_str))
+            market_list.append(MarketIndex(name="KOSDAQ", value=value, change=change, investor_summary=inv_str))
             
         # 환율 (USD), 국제 금, WTI 유가 등 매크로 지표 추가
         try:
@@ -92,16 +128,29 @@ async def get_market_indices() -> List[MarketIndex]:
                 m_html = await m_res.text(encoding='euc-kr')
             m_soup = BeautifulSoup(m_html, "html.parser")
             
-            # 시장 지표를 담은 박스들 (h_lst: 종목명, value: 값)
-            for h3, v in zip(m_soup.select('.market1 h3.h_lst, .market2 h3.h_lst, .market3 h3.h_lst, .market4 h3.h_lst'), 
-                             m_soup.select('.market1 span.value, .market2 span.value, .market3 span.value, .market4 span.value')):
-                
-                name = h3.get_text(strip=True)
-                val = v.get_text(strip=True)
-                
+            for li_tag in m_soup.select(".market1 .data_lst li, .market3 .data_lst li"):
+                name_tag = li_tag.select_one("h3 .blind")
+                value_tag = li_tag.select_one(".head_info .value")
+                head_info_tag = li_tag.select_one(".head_info")
+                source_tag = li_tag.select_one(".graph_info .source")
+                if not name_tag or not value_tag or not head_info_tag:
+                    continue
+
+                name = name_tag.get_text(strip=True)
+                val = _clean_numeric_text(value_tag.get_text(strip=True))
+                change = _extract_signed_change(head_info_tag, ".change")
+                source = source_tag.get_text(strip=True) if source_tag else "매크로 지표"
+
                 # 주요 지표들만 선별해서 리포트에 포함
                 if name in ["미국 USD", "WTI", "국제 금"]:
-                    market_list.append(MarketIndex(name=name, value=val, change="", investor_summary="매크로 지표"))
+                    market_list.append(
+                        MarketIndex(
+                            name=name,
+                            value=val,
+                            change=change,
+                            investor_summary=source,
+                        )
+                    )
                     
         except Exception as filter_err:
             global_logger.error(f"매크로 지표(환율/유가/금)를 가져오는 데 실패했습니다: {filter_err}")
