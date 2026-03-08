@@ -224,19 +224,19 @@ def _append_compact_brief(
 
     details = card.get("details", [])
     if details:
-        lines.append(f"- 핵심 근거: {_emphasize_text(' / '.join(details[:2]))}")
+        for idx, detail in enumerate(details[:4], 1):
+            lines.append(f"- 핵심 근거 {idx}: {_emphasize_text(detail)}")
     if card.get("why_it_matters"):
         lines.append(f"- 왜 중요한가: {_emphasize_text(card['why_it_matters'])}")
     if card.get("watch_points"):
-        lines.append(f"- 지금 볼 것: {_emphasize_text(', '.join(card['watch_points'][:3]))}")
+        for idx, item in enumerate(card["watch_points"][:4], 1):
+            lines.append(f"- 지금 볼 것 {idx}: {_emphasize_text(item)}")
     if card.get("related_links"):
-        lines.append(
-            "- 관련 기사: "
-            + ", ".join(
+        for idx, link in enumerate(card["related_links"][:4], 1):
+            lines.append(
+                f"- 관련 기사 {idx}: "
                 f"[{link.get('label', '관련 기사')}]({link.get('url', '#')})"
-                for link in card["related_links"][:2]
             )
-        )
     if card.get("outlook"):
         lines.append(f"- 다음 체크포인트: {_emphasize_text(card['outlook'])}")
     if card.get("action"):
@@ -304,19 +304,19 @@ def _append_lens_section(lines: list[str], insight_lenses: list[dict]) -> None:
             lines.append(f"> {_emphasize_text(lens['summary'])}")
             lines.append("")
         if lens.get("details"):
-            lines.append(f"- 핵심 근거: {_emphasize_text(' / '.join(lens['details'][:2]))}")
+            for idx, detail in enumerate(lens["details"][:4], 1):
+                lines.append(f"- 핵심 근거 {idx}: {_emphasize_text(detail)}")
         if lens.get("why_it_matters"):
             lines.append(f"- 왜 중요한가: {_emphasize_text(lens['why_it_matters'])}")
         if lens.get("watch_points"):
-            lines.append(f"- 지금 볼 것: {_emphasize_text(', '.join(lens['watch_points'][:3]))}")
+            for idx, item in enumerate(lens["watch_points"][:4], 1):
+                lines.append(f"- 지금 볼 것 {idx}: {_emphasize_text(item)}")
         if lens.get("related_links"):
-            lines.append(
-                "- 관련 기사: "
-                + ", ".join(
+            for idx, link in enumerate(lens["related_links"][:3], 1):
+                lines.append(
+                    f"- 관련 기사 {idx}: "
                     f"[{link.get('label', '관련 기사')}]({link.get('url', '#')})"
-                    for link in lens["related_links"][:2]
                 )
-            )
         lines.append("")
         _append_three_view_table(lines, lens)
 

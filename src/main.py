@@ -51,7 +51,7 @@ from src.services.notifier.email import EmailSender
 from src.services.notifier.queue_worker import NotificationAction, global_message_queue
 from src.services.prompt_manager import fetch_prompts_from_notion
 from src.services.report_builder import build_report_payload
-from src.services.topic_news import collect_topic_news
+from src.services.topic_news import collect_topic_news, select_topic_community_posts
 from src.services.user_manager import fetch_active_users
 from src.utils.database import close_db, get_db
 from src.utils.logger import global_logger, log_critical_error
@@ -272,7 +272,11 @@ async def run_pipeline() -> None:
                         {
                             "keyword": keyword,
                             "keyword_news": topic_news_map.get(keyword, []),
-                            "community_posts": [],
+                            "community_posts": select_topic_community_posts(
+                                keyword,
+                                safe_community_posts,
+                                limit=3,
+                            ),
                         }
                     )
                 kw_md_results = await generate_theme_briefings_batch(theme_items)

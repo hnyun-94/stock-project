@@ -36,6 +36,31 @@ _THEME_ALIAS_MAP = {
     "artificialintelligence": "인공지능(AI)",
     "인공지능": "인공지능(AI)",
     "ai반도체": "인공지능(AI)",
+    "2차전지": "이차전지",
+    "이차전지": "이차전지",
+    "배터리": "이차전지",
+    "s&p500": "S&P500",
+    "sp500": "S&P500",
+    "미국증시": "S&P500",
+    "뉴욕증시": "S&P500",
+}
+
+_THEME_WHY_IT_MATTERS = {
+    "인공지능(AI)": "인공지능(AI)은 빅테크의 CAPEX와 반도체 주문이 실제 실적으로 이어지는지 확인하는 대표 성장 테마라, 투자 사이클이 유지되는지 보는 기준점 역할을 합니다.",
+    "이차전지": "이차전지는 전기차 판매와 배터리 판가, 원재료 가격이 함께 움직여야 해석이 맞아떨어지는 테마라 한 가지 뉴스만으로 판단하기 어렵습니다.",
+    "S&P500": "S&P500은 미국 대형주와 유동성 기대를 함께 반영해, 빅테크 실적과 연준 해석이 동시에 바뀌는지를 보는 핵심 지표입니다.",
+}
+
+_THEME_WATCHPOINTS = {
+    "인공지능(AI)": ["빅테크 CAPEX", "GPU 출하", "HBM 공급", "AI 서비스 수익화"],
+    "이차전지": ["전기차 판매", "배터리 판가", "리튬·광물 가격", "정책 보조금"],
+    "S&P500": ["빅테크 가이던스", "미국 금리", "고용·물가", "달러·국채금리"],
+}
+
+_THEME_OUTLOOKS = {
+    "인공지능(AI)": "다음 체크포인트는 빅테크 투자 확대가 GPU·HBM 주문과 실적으로 이어지는지입니다.",
+    "이차전지": "다음 체크포인트는 전기차 수요 회복이 배터리 가격과 소재 수익성으로 번지는지입니다.",
+    "S&P500": "다음 체크포인트는 빅테크 실적 기대와 연준 해석이 동시에 우호적으로 유지되는지입니다.",
 }
 
 _GLOSSARY = {
@@ -288,7 +313,7 @@ def _clean_text_items(items: Iterable[str], limit: int = 3) -> List[str]:
 
 def _build_related_links(
     news_items: Iterable[NewsArticle],
-    limit: int = 2,
+    limit: int = 4,
 ) -> List[Dict[str, str]]:
     links: List[Dict[str, str]] = []
     seen_urls: set[str] = set()
@@ -464,8 +489,11 @@ def _describe_risk_factor(joined_context: str) -> str:
 
 
 def _describe_why_it_matters(subject: str, joined_context: str) -> str:
+    canonical_subject = _normalize_theme_keyword(subject)
     if subject in _HOLDING_WHY_IT_MATTERS:
         return _HOLDING_WHY_IT_MATTERS[subject]
+    if canonical_subject in _THEME_WHY_IT_MATTERS:
+        return _THEME_WHY_IT_MATTERS[canonical_subject]
     if subject in {"시장", "오늘 장", "최근 동향", "국장 개장 전 공통 이슈", "국장 마감 직후 공통 이슈", "미장 개장 전 공통 이슈", "미장 마감 직후 공통 이슈"}:
         return "시장 판단은 지수 숫자 하나보다 수급, 환율, 거시 변수, 핵심 뉴스가 같은 방향을 가리키는지 함께 보는 것이 더 중요합니다."
     topic_subject = _topic_subject(subject)
@@ -486,10 +514,13 @@ def _describe_why_it_matters(subject: str, joined_context: str) -> str:
     return f"{topic_subject} 관련 뉴스가 실제 숫자와 자금 유입으로 이어지는지 확인해야 판단의 신뢰도가 높아집니다."
 
 
-def _describe_monitor_points(joined_context: str) -> str:
+def _describe_monitor_points(subject: str, joined_context: str) -> str:
+    canonical_subject = _normalize_theme_keyword(subject)
     for holding, points in _HOLDING_WATCHPOINTS.items():
-        if holding in joined_context:
+        if holding == subject or holding in joined_context:
             return ", ".join(points)
+    if canonical_subject in _THEME_WATCHPOINTS:
+        return ", ".join(_THEME_WATCHPOINTS[canonical_subject])
     if _contains_any(joined_context, ("HBM", "메모리", "DDR", "낸드")):
         return "HBM 가격, 공급 계약, 고객사 발주"
     if _contains_any(joined_context, ("GPU", "AI", "인공지능", "데이터센터")):
@@ -509,7 +540,7 @@ def _describe_monitor_points(joined_context: str) -> str:
 
 def _split_watch_points(raw_text: str) -> List[str]:
     items = [item.strip() for item in raw_text.split(",") if item.strip()]
-    return _clean_text_items(items, limit=3)
+    return _clean_text_items(items, limit=4)
 
 
 def _summary_needs_rebuild(summary: str) -> bool:
@@ -520,12 +551,19 @@ def _summary_needs_rebuild(summary: str) -> bool:
     return any(fragment in normalized for fragment in generic_fragments)
 
 
-def _build_context_views(subject: str, joined_context: str) -> tuple[str, str, str, str]:
+def _build_context_views(
+    subject: str,
+    joined_context: str,
+    evidence_points: Optional[Sequence[str]] = None,
+) -> tuple[str, str, str, str]:
     topic_subject = _topic_subject(subject)
     why_it_matters = _describe_why_it_matters(subject, joined_context)
-    monitor_points = _describe_monitor_points(joined_context)
+    monitor_points = _describe_monitor_points(subject, joined_context)
     risk_factor = _describe_risk_factor(joined_context)
-    positive_view = f"{monitor_points}가 같이 좋아지면 상방 해석이 쉬워집니다."
+    evidence_cue = ""
+    if evidence_points:
+        evidence_cue = f"{_truncate_text(evidence_points[0], 52)} 흐름이 유지되고 "
+    positive_view = f"{evidence_cue}{monitor_points}가 같이 좋아지면 상방 해석이 쉬워집니다."
     if subject in {"시장", "오늘 장", "최근 동향", "국장 개장 전 공통 이슈", "국장 마감 직후 공통 이슈", "미장 개장 전 공통 이슈", "미장 마감 직후 공통 이슈"}:
         neutral_view = "지금은 한 방향으로 베팅하기보다 수급·환율·거시 지표가 같은 쪽으로 모이는지 확인하는 편이 좋습니다."
     else:
@@ -1251,7 +1289,7 @@ def _build_card(
     watch_points: Optional[Sequence[str]] = None,
     related_links: Optional[Sequence[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
-    cleaned_details = _clean_text_items(details, limit=3)
+    cleaned_details = _clean_text_items(details, limit=5)
     return {
         "summary": _truncate_text(summary, 150),
         "details": cleaned_details,
@@ -1260,7 +1298,7 @@ def _build_card(
             if why_it_matters and not _is_low_signal_text(why_it_matters)
             else ""
         ),
-        "watch_points": _clean_text_items(watch_points or [], limit=3),
+        "watch_points": _clean_text_items(watch_points or [], limit=4),
         "positive_view": _truncate_text(positive_view, 140),
         "neutral_view": _truncate_text(neutral_view, 140),
         "negative_view": _truncate_text(negative_view, 140),
@@ -1274,7 +1312,7 @@ def _build_card(
             }
             for link in list(related_links or [])
             if str(link.get("label") or "").strip() and str(link.get("url") or "").strip()
-        ][:2],
+        ][:4],
     }
 
 
@@ -1337,8 +1375,8 @@ def _build_quick_take_card(
             120,
         ),
         why_it_matters=why_it_matters,
-        watch_points=watch_points or _split_watch_points(_describe_monitor_points(joined_context)),
-        related_links=_build_related_links(signal_news, limit=2),
+        watch_points=watch_points or _split_watch_points(_describe_monitor_points("시장", joined_context)),
+        related_links=_build_related_links(signal_news, limit=3),
     )
 
 
@@ -1370,7 +1408,11 @@ def _build_session_issue_card(
         details.append(f"지금 논쟁거리: {_truncate_text(community_posts[0].title, 90)}")
 
     score = _score_texts(news_titles + [post.title for post in list(community_posts)[:2]])
-    positive_view, neutral_view, negative_view, outlook = _build_context_views(label, joined_context)
+    positive_view, neutral_view, negative_view, outlook = _build_context_views(
+        label,
+        joined_context,
+        evidence_points=details,
+    )
     return {
         "title": label,
         **_build_card(
@@ -1384,8 +1426,8 @@ def _build_session_issue_card(
                 120,
             ),
             why_it_matters=_describe_why_it_matters(label, joined_context),
-            watch_points=_split_watch_points(_describe_monitor_points(joined_context)),
-            related_links=_build_related_links(signal_news, limit=2),
+            watch_points=_split_watch_points(_describe_monitor_points(label, joined_context)),
+            related_links=_build_related_links(signal_news, limit=3),
         ),
     }
 
@@ -1406,9 +1448,13 @@ def _build_recent_window_card(
         f"가장 최근 화제는 {recent_titles[0] if recent_titles else '새 헤드라인 부족'}이며, "
         "지금은 뉴스 내용 자체보다 그 뉴스가 얼마나 빠르게 확산되는지가 더 중요합니다."
     )
-    details = (recent_titles + trend_titles)[:2]
+    details = (recent_titles + trend_titles)[:4]
     score = _score_texts(recent_titles)
-    positive_view, neutral_view, negative_view, outlook = _build_context_views("최근 동향", joined_context)
+    positive_view, neutral_view, negative_view, outlook = _build_context_views(
+        "최근 동향",
+        joined_context,
+        evidence_points=details,
+    )
     return _build_card(
         summary=summary,
         details=details or ["최신 뉴스 데이터가 적어 다음 실행에서 보강됩니다."],
@@ -1417,8 +1463,8 @@ def _build_recent_window_card(
         negative_view=negative_view,
         outlook=_truncate_text(f"현재 1H 톤은 {_tone_label(score)}입니다. {outlook}", 120),
         why_it_matters=_describe_why_it_matters("최근 동향", joined_context),
-        watch_points=_split_watch_points(_describe_monitor_points(joined_context)),
-        related_links=_build_related_links(signal_news, limit=2),
+        watch_points=_split_watch_points(_describe_monitor_points("최근 동향", joined_context)),
+        related_links=_build_related_links(signal_news, limit=3),
     )
 
 
@@ -1447,18 +1493,22 @@ def _build_daily_window_card(
         )
         for item in list(market_indices)[:2]
     ]
-    details = index_details or list(market_points[:2])
-    positive_view, neutral_view, negative_view, outlook = _build_context_views("오늘 장", joined_context)
+    details = (index_details + list(market_points[:2]))[:4]
+    positive_view, neutral_view, negative_view, outlook = _build_context_views(
+        "오늘 장",
+        joined_context,
+        evidence_points=details,
+    )
     return _build_card(
         summary=summary,
-        details=details[:3],
+        details=details,
         positive_view=positive_view,
         neutral_view=neutral_view,
         negative_view=negative_view,
         outlook=outlook,
         why_it_matters=_describe_why_it_matters("오늘 장", joined_context),
-        watch_points=_split_watch_points(_describe_monitor_points(joined_context)),
-        related_links=_build_related_links(signal_news, limit=2),
+        watch_points=_split_watch_points(_describe_monitor_points("오늘 장", joined_context)),
+        related_links=_build_related_links(signal_news, limit=3),
     )
 
 
@@ -1565,6 +1615,9 @@ def _merge_theme_sections(
 
 
 def _theme_outlook(keyword: str, joined_context: str) -> str:
+    canonical_keyword = _normalize_theme_keyword(keyword)
+    if canonical_keyword in _THEME_OUTLOOKS:
+        return _THEME_OUTLOOKS[canonical_keyword]
     if "HBM" in joined_context or "메모리" in joined_context:
         return "다음 체크포인트는 HBM 공급 확대와 메모리 가격 반응입니다."
     if "GPU" in joined_context or "AI" in joined_context or "인공지능" in keyword:
@@ -1574,6 +1627,56 @@ def _theme_outlook(keyword: str, joined_context: str) -> str:
     return "다음 체크포인트는 뉴스가 실제 실적과 자금 유입으로 이어지는지입니다."
 
 
+def _build_evidence_details(
+    *,
+    news_items: Sequence[NewsArticle],
+    point_items: Sequence[str],
+    prefixes: tuple[str, str, str],
+    extra_items: Optional[Sequence[str]] = None,
+) -> List[str]:
+    details: List[str] = []
+    event_prefix, summary_prefix, point_prefix = prefixes
+    for news in news_items[:3]:
+        details.append(f"{event_prefix}: {_truncate_text(news.title, 90)}")
+        if news.summary:
+            details.append(f"{summary_prefix}: {_truncate_text(news.summary, 90)}")
+        if len(details) >= 4:
+            break
+
+    for point in point_items[:2]:
+        details.append(f"{point_prefix}: {_truncate_text(point, 90)}")
+        if len(details) >= 5:
+            break
+
+    for item in list(extra_items or []):
+        details.append(_truncate_text(item, 90))
+        if len(details) >= 5:
+            break
+
+    return details[:5]
+
+
+def _build_theme_summary(
+    keyword: str,
+    news_items: Sequence[NewsArticle],
+    point_items: Sequence[str],
+) -> str:
+    if keyword == "인공지능(AI)":
+        base = "인공지능(AI)은 빅테크 투자와 반도체 주문이 실제 숫자로 이어지는지 확인하는 구간입니다."
+    elif keyword == "이차전지":
+        base = "이차전지는 전기차 수요와 배터리 판가 회복 여부가 다시 핵심으로 돌아온 구간입니다."
+    elif keyword == "S&P500":
+        base = "S&P500은 빅테크 실적 기대와 연준 해석이 같이 움직이는지 확인해야 하는 구간입니다."
+    else:
+        base = f"{keyword}는 최근 반복해서 보인 테마라, 직접 연결된 숫자가 나오는지 확인이 중요합니다."
+
+    if news_items:
+        return f"{base} 최근에는 '{_truncate_text(news_items[0].title, 55)}' 흐름이 대표 근거입니다."
+    if point_items:
+        return f"{base} 최근 리포트에서는 '{_truncate_text(point_items[0], 55)}' 포인트가 반복됐습니다."
+    return f"{base} 아직 직접 연결된 재료는 얇아 추가 확인이 필요합니다."
+
+
 def _build_theme_cards(
     theme_sections: Sequence[Dict[str, str]],
     theme_news_map: Dict[str, Sequence[NewsArticle]],
@@ -1581,35 +1684,29 @@ def _build_theme_cards(
     cards: List[Dict[str, Any]] = []
     for merged in _merge_theme_sections(theme_sections, theme_news_map)[:2]:
         keyword = merged["keyword"]
-        news_items = _signal_news_items(merged["news_items"], limit=2)
-        point_items = _clean_text_items(merged["points"], limit=3)
+        news_items = _signal_news_items(merged["news_items"], limit=4)
+        point_items = _clean_text_items(merged["points"], limit=4)
         joined_context = " ".join([keyword] + point_items + [news.title for news in news_items])
-        news_titles = [item.title for item in news_items[:2]]
+        news_titles = [item.title for item in news_items[:3]]
         score = _score_texts(news_titles + point_items)
+        summary = _build_theme_summary(keyword, news_items, point_items)
+        details = _build_evidence_details(
+            news_items=news_items,
+            point_items=point_items,
+            prefixes=("연결 기사", "해석 포인트", "리포트 관찰"),
+        )
 
-        if news_titles:
-            summary = f"{keyword}는 지금 '{_truncate_text(news_titles[0], 55)}' 같은 이슈 때문에 다시 주목받고 있습니다."
-        elif point_items:
-            summary = f"{keyword}는 최근 리포트에서 반복해서 보인 테마라, 완전히 식었다고 보긴 어렵습니다."
-        else:
-            summary = f"{keyword}는 최근 관찰 대상이지만 직접 연결된 재료는 아직 적습니다."
-
-        details = []
-        for news in news_items[:2]:
-            details.append(f"무슨 일이 있었나: {_truncate_text(news.title, 90)}")
-            if news.summary:
-                details.append(f"핵심 설명: {_truncate_text(news.summary, 90)}")
-                break
-        if not details:
-            details = [f"최근 포인트: {point}" for point in point_items[:2]]
-
-        positive_view, neutral_view, negative_view, outlook = _build_context_views(keyword, joined_context)
+        positive_view, neutral_view, negative_view, outlook = _build_context_views(
+            keyword,
+            joined_context,
+            evidence_points=details,
+        )
         cards.append(
             {
                 "keyword": keyword,
                 **_build_card(
                     summary=summary,
-                    details=details[:3],
+                    details=details,
                     positive_view=positive_view,
                     neutral_view=neutral_view,
                     negative_view=negative_view,
@@ -1618,8 +1715,8 @@ def _build_theme_cards(
                         120,
                     ),
                     why_it_matters=_describe_why_it_matters(keyword, joined_context),
-                    watch_points=_split_watch_points(_describe_monitor_points(joined_context)),
-                    related_links=_build_related_links(news_items, limit=2),
+                    watch_points=_split_watch_points(_describe_monitor_points(keyword, joined_context)),
+                    related_links=_build_related_links(news_items, limit=4),
                 ),
             }
         )
@@ -1642,7 +1739,7 @@ def _build_holding_cards(
         stance = insight.get("stance", "관찰").strip() or "관찰"
         holding_actions[holding] = stance
         raw_summary = insight.get("summary", "").strip()
-        news_items = _signal_news_items(holding_news_map.get(holding, []), limit=2)
+        news_items = _signal_news_items(holding_news_map.get(holding, []), limit=4)
         summary = raw_summary or f"{holding}는 직접 연계 뉴스가 적어 추가 확인이 필요합니다."
         if _summary_needs_rebuild(summary):
             if news_items:
@@ -1650,16 +1747,20 @@ def _build_holding_cards(
             else:
                 summary = f"{holding}는 직접 연계 재료가 얇아 당장은 {stance} 관점에서 확인이 필요합니다."
         joined_context = " ".join([holding, summary, insight.get("action", "")] + [news.title for news in news_items] + [news.summary or "" for news in news_items])
-        details = []
-        for news in news_items:
-            details.append(f"무슨 일이 있었나: {_truncate_text(news.title, 90)}")
-            if news.summary:
-                details.append(f"핵심 설명: {_truncate_text(news.summary, 90)}")
-                break
+        details = _build_evidence_details(
+            news_items=news_items,
+            point_items=[],
+            prefixes=("연계 기사", "핵심 설명", "체크 포인트"),
+            extra_items=[f"현재 대응: {insight.get('action', '').strip()}"] if insight.get("action", "").strip() else [],
+        )
         if not details:
             details.append("직접 연계 뉴스가 적어 시장 전체 흐름과 함께 보는 편이 좋습니다.")
 
-        positive_view, neutral_view, negative_view, outlook = _build_context_views(holding, joined_context)
+        positive_view, neutral_view, negative_view, outlook = _build_context_views(
+            holding,
+            joined_context,
+            evidence_points=details,
+        )
         outlook = insight.get("action", "").strip() or "다음 뉴스와 수급 변화를 확인하세요."
         if stance == "유지":
             outlook = f"{outlook} 지금은 기존 포지션을 서두르지 않고 유지하는 쪽이 더 자연스럽습니다."
@@ -1671,12 +1772,12 @@ def _build_holding_cards(
                 "holding": holding,
                 **_build_card(
                     summary=summary,
-                    details=details[:3],
+                    details=details,
                     positive_view=positive_view,
                     neutral_view=neutral_view,
                     negative_view=negative_view,
                     outlook=_truncate_text(
-                        f"현재 톤은 {_tone_label(_score_texts([joined_context]))}입니다. {outlook} {_describe_monitor_points(joined_context)}를 계속 보세요.",
+                        f"현재 톤은 {_tone_label(_score_texts([joined_context]))}입니다. {outlook} {_describe_monitor_points(holding, joined_context)}를 계속 보세요.",
                         120,
                     ),
                     action=insight.get("action", "").strip(),
@@ -1684,9 +1785,9 @@ def _build_holding_cards(
                     why_it_matters=_describe_why_it_matters(holding, joined_context),
                     watch_points=_HOLDING_WATCHPOINTS.get(
                         holding,
-                        _split_watch_points(_describe_monitor_points(joined_context)),
+                        _split_watch_points(_describe_monitor_points(holding, joined_context)),
                     ),
-                    related_links=_build_related_links(news_items, limit=2),
+                    related_links=_build_related_links(news_items, limit=4),
                 ),
             }
         )
@@ -1836,7 +1937,7 @@ def _build_insight_lenses(
         market_points=market_points,
     )
 
-    flow_details = list(daily_window.get("details", [])[:2])
+    flow_details = list(daily_window.get("details", [])[:3])
     if first_theme.get("keyword"):
         flow_details.append(f"우선 테마: {first_theme['keyword']}")
     if first_holding.get("holding"):
@@ -1853,18 +1954,18 @@ def _build_insight_lenses(
             ),
             "details": _clean_text_items(
                 [
-                    f"현재 시장 스타일: {market_style}",
-                    f"시장 톤: {market_regime}",
-                    *(quick_take.get("details", [])[:2]),
+                f"현재 시장 스타일: {market_style}",
+                f"시장 톤: {market_regime}",
+                    *(quick_take.get("details", [])[:3]),
                 ],
-                limit=3,
+                limit=4,
             ),
             "why_it_matters": "경제 환경은 지금 어떤 종목군이 유리한지와, 같은 뉴스에 시장이 얼마나 민감하게 반응할지를 정하는 배경입니다.",
-            "watch_points": quick_take.get("watch_points", [])[:2],
+            "watch_points": quick_take.get("watch_points", [])[:3],
             "positive_view": quick_take.get("positive_view", ""),
             "neutral_view": quick_take.get("neutral_view", ""),
             "negative_view": quick_take.get("negative_view", ""),
-            "related_links": quick_take.get("related_links", [])[:2],
+            "related_links": quick_take.get("related_links", [])[:3],
         },
         {
             "title": "자금 흐름",
@@ -1872,24 +1973,24 @@ def _build_insight_lenses(
                 f"오늘은 누가 사고 있는지와 {first_theme.get('keyword', '핵심 테마')}가 "
                 "실제 종목 수익률로 번지는지를 같이 보는 편이 좋습니다."
             ),
-            "details": _clean_text_items(flow_details, limit=3),
+            "details": _clean_text_items(flow_details, limit=4),
             "why_it_matters": daily_window.get("why_it_matters", ""),
-            "watch_points": daily_window.get("watch_points", [])[:2],
+            "watch_points": daily_window.get("watch_points", [])[:3],
             "positive_view": daily_window.get("positive_view", ""),
             "neutral_view": daily_window.get("neutral_view", ""),
             "negative_view": daily_window.get("negative_view", ""),
-            "related_links": daily_window.get("related_links", [])[:2],
+            "related_links": daily_window.get("related_links", [])[:3],
         },
         {
             "title": "시장 화제",
             "summary": event_source.get("summary", ""),
-            "details": event_source.get("details", [])[:2],
+            "details": event_source.get("details", [])[:4],
             "why_it_matters": event_source.get("why_it_matters", ""),
-            "watch_points": event_source.get("watch_points", [])[:2],
+            "watch_points": event_source.get("watch_points", [])[:3],
             "positive_view": event_source.get("positive_view", ""),
             "neutral_view": event_source.get("neutral_view", ""),
             "negative_view": event_source.get("negative_view", ""),
-            "related_links": event_source.get("related_links", [])[:2],
+            "related_links": event_source.get("related_links", [])[:3],
         },
     ]
 

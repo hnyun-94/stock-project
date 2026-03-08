@@ -185,10 +185,13 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                 },
                 "quick_take": {
                     "summary": "핵심 요약",
-                    "details": ["근거 1"],
+                    "details": ["근거 1", "근거 2", "근거 3"],
                     "why_it_matters": "왜 중요한가",
-                    "watch_points": ["수급", "환율"],
-                    "related_links": [{"label": "시장 기사", "url": "https://news.example.com/market"}],
+                    "watch_points": ["수급", "환율", "거시 지표"],
+                    "related_links": [
+                        {"label": "시장 기사", "url": "https://news.example.com/market"},
+                        {"label": "추가 시장 기사", "url": "https://news.example.com/market-2"},
+                    ],
                     "positive_view": "긍정",
                     "neutral_view": "중립",
                     "negative_view": "부정",
@@ -198,10 +201,13 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                     {
                         "title": "경제 온도",
                         "summary": "요약 1",
-                        "details": ["근거 1"],
+                        "details": ["근거 1", "근거 2", "근거 3"],
                         "why_it_matters": "왜 중요한가",
-                        "watch_points": ["수급"],
-                        "related_links": [{"label": "경제 기사", "url": "https://news.example.com/economy"}],
+                        "watch_points": ["수급", "환율", "금리"],
+                        "related_links": [
+                            {"label": "경제 기사", "url": "https://news.example.com/economy"},
+                            {"label": "추가 경제 기사", "url": "https://news.example.com/economy-2"},
+                        ],
                         "positive_view": "긍정",
                         "neutral_view": "중립",
                         "negative_view": "부정",
@@ -266,10 +272,13 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                         "holding": "삼성전자",
                         "stance": "유지",
                         "summary": "근거",
-                        "details": ["뉴스 근거"],
+                        "details": ["뉴스 근거", "실적 근거", "수급 근거"],
                         "why_it_matters": "왜 중요한가",
-                        "watch_points": ["HBM 납품 확대"],
-                        "related_links": [{"label": "삼성 기사", "url": "https://news.example.com/samsung"}],
+                        "watch_points": ["HBM 납품 확대", "파운드리 수율", "고객사 CAPEX"],
+                        "related_links": [
+                            {"label": "삼성 기사", "url": "https://news.example.com/samsung"},
+                            {"label": "추가 삼성 기사", "url": "https://news.example.com/samsung-2"},
+                        ],
                         "positive_view": "긍정",
                         "neutral_view": "중립",
                         "negative_view": "부정",
@@ -323,6 +332,9 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("[시장 기사](https://news.example.com/market)", markdown_text)
         self.assertIn("[삼성 기사](https://news.example.com/samsung)", markdown_text)
         self.assertIn("[경제 기사](https://news.example.com/economy)", markdown_text)
+        self.assertIn("- 핵심 근거 2: 근거 2", markdown_text)
+        self.assertIn("- 지금 볼 것 2: 환율", markdown_text)
+        self.assertIn("- 관련 기사 2: [추가 삼성 기사](https://news.example.com/samsung-2)", markdown_text)
         self.assertIn("**중립**", markdown_text)
         self.assertNotIn("**인공지능(**AI**)**", markdown_text)
 
