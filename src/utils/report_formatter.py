@@ -22,11 +22,14 @@ _TEXT_COLOR = "#33424F"
 _MUTED_TEXT = "#6E7B86"
 _BODY_BACKGROUND = "#F6F4EE"
 _TABLE_HEADER_ALIASES = {
+    "소주제": "소주제",
     "구분": "체크 대상",
     "내용": "현재 판단",
     "왜 보나": "읽는 이유",
     "항목": "체크 대상",
     "현재 값": "오늘 숫자",
+    "전일 대비": "전일 변화",
+    "1주 대비": "1주 변화",
     "읽는 법": "읽는 포인트",
     "구간": "기간",
     "한줄 판단": "핵심 요약",
@@ -290,6 +293,11 @@ def _append_decision_section(lines: list[str], report_payload: dict) -> None:
             headers=scoreboard.get("headers", []),
             rows=scoreboard.get("rows", []),
         )
+        if scoreboard.get("notes"):
+            lines.append("**비교 기준**")
+            for note in scoreboard["notes"]:
+                lines.append(f"- {_emphasize_text(note)}")
+            lines.append("")
 
 
 def _append_lens_section(lines: list[str], insight_lenses: list[dict]) -> None:

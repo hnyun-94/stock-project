@@ -180,8 +180,16 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                     {"label": "먼저 볼 테마", "value": "AI", "detail": "반복 등장 테마입니다."},
                 ],
                 "market_scoreboard": {
-                    "headers": ["항목", "현재 값", "읽는 법"],
-                    "rows": [["KOSPI", "2650.10", "외국인 수급 확인"], ["시장 심리", "+8 / 중립 ████░░░░", "과열 여부 확인"]],
+                    "headers": ["소주제", "체크 대상", "현재 값", "전일 대비", "1주 대비", "읽는 법"],
+                    "rows": [
+                        ["시장 지수", "KOSPI", "2650.10", "▲ +15.10 (+0.57%)", "▲ +70.10 (+2.72%)", "외국인 수급 확인"],
+                        ["매크로 지표", "미국 USD", "1485.00", "▲ +6.00 (+0.41%)", "▲ +45.00 (+3.12%)", "환율이 오르면 외국인 수급과 위험회피 해석이 강해질 수 있습니다."],
+                        ["심리·관심", "시장 심리", "+8 / 중립 ████░░░░", "▲ +4p", "▲ +12p", "과열 여부 확인"],
+                    ],
+                    "notes": [
+                        "전일 대비는 당일 소스 change 또는 전일 snapshot 기준입니다.",
+                        "1주 대비는 최근 7일 리포트 snapshot 누적 기준이며, 기준선이 없으면 누적 중으로 표시합니다.",
+                    ],
                 },
                 "quick_take": {
                     "summary": "핵심 요약",
@@ -315,8 +323,10 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("**리포트 신뢰도**: 높음", markdown_text)
         self.assertIn("█████████░", markdown_text)
         self.assertIn("| 체크 대상 | 현재 판단 | 읽는 이유 |", markdown_text)
-        self.assertIn("| 체크 대상 | 오늘 숫자 | 읽는 포인트 |", markdown_text)
+        self.assertIn("| 소주제 | 체크 대상 | 오늘 숫자 | 전일 변화 | 1주 변화 | 읽는 포인트 |", markdown_text)
+        self.assertIn("| 시장 지수 | **KOSPI** | 2650.10 | ▲ +15.10 (+0.57%) | ▲ +70.10 (+2.72%) | 외국인 수급 확인 |", markdown_text)
         self.assertIn("+8 / **중립** ████░░░░", markdown_text)
+        self.assertIn("**비교 기준**", markdown_text)
         self.assertIn("100% ████████", markdown_text)
         self.assertIn("6건 ▁▅█", markdown_text)
         self.assertIn("▲ +2건", markdown_text)
