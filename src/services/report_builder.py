@@ -153,6 +153,20 @@ _HOLDING_WHY_IT_MATTERS = {
     "엔비디아": "엔비디아는 AI 투자 사이클의 중심축이라, 데이터센터 투자와 GPU 출하 흐름이 꺾이는지가 가장 중요한 판단 포인트입니다.",
 }
 
+_SCOREBOARD_ROW_GROUPS = (
+    ("시장 지수", ("KOSPI", "KOSDAQ")),
+    ("매크로 지표", ("미국 USD", "WTI", "국제 금")),
+    ("심리·관심", ("시장 심리", "검색 관심")),
+)
+
+_SCOREBOARD_HINTS = {
+    "미국 USD": "환율이 오르면 외국인 수급과 위험회피 해석이 강해질 수 있습니다.",
+    "WTI": "유가가 오르면 인플레이션과 운송비 부담 해석을 함께 봅니다.",
+    "국제 금": "금 가격이 오르면 안전자산 선호가 커지는지 확인합니다.",
+    "시장 심리": "숫자와 장세 톤을 같이 보며 과도한 낙관·비관을 피합니다.",
+    "검색 관심": "실제 매수세로 이어지는지 함께 보지 않으면 과열 해석이 될 수 있습니다.",
+}
+
 _LEARNING_TOPIC_LIBRARY = {
     "환율": {
         "definition": "환율은 원화와 달러 같은 통화의 교환 비율입니다.",
@@ -619,6 +633,72 @@ def _deserialize_snapshot_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str,
     return snapshots
 
 
+def _parse_snapshot_timestamp(snapshot: Dict[str, Any]) -> Optional[datetime]:
+    raw = str(snapshot.get("timestamp") or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=_KST)
+    return parsed.astimezone(_KST)
+
+
+def _snapshot_scoreboard_metric(snapshot: Dict[str, Any], label: str) -> Optional[Dict[str, Any]]:
+    metrics = snapshot.get("scoreboard_metrics")
+    if not isinstance(metrics, dict):
+        return None
+    metric = metrics.get(label)
+    return metric if isinstance(metric, dict) else None
+
+
+def _find_scoreboard_snapshot(
+    snapshots: Sequence[Dict[str, Any]],
+    *,
+    label: str,
+    reference_time: Optional[datetime],
+    target_days: float,
+    tolerance_days: float,
+    fallback_oldest: bool = False,
+) -> Optional[Dict[str, Any]]:
+    reference_kst = _as_kst(reference_time)
+    candidates: List[tuple[float, float, Dict[str, Any]]] = []
+    for snapshot in snapshots:
+        metric = _snapshot_scoreboard_metric(snapshot, label)
+        if not metric:
+            continue
+        timestamp = _parse_snapshot_timestamp(snapshot)
+        if timestamp is None:
+            continue
+        age_days = (reference_kst - timestamp).total_seconds() / 86400
+        if age_days <= 0:
+            continue
+        candidates.append((abs(age_days - target_days), age_days, snapshot))
+
+    if not candidates:
+        return None
+
+    targeted = [
+        entry for entry in candidates
+        if abs(entry[1] - target_days) <= tolerance_days
+    ]
+    if targeted:
+        targeted.sort(key=lambda entry: (entry[0], entry[1]))
+        return targeted[0][2]
+
+    if fallback_oldest:
+        older_candidates = [
+            entry for entry in candidates
+            if entry[1] >= (target_days * 0.5)
+        ]
+        if older_candidates:
+            older_candidates.sort(key=lambda entry: entry[1], reverse=True)
+            return older_candidates[0][2]
+    return None
+
+
 def _build_market_regime(sentiment_score: int, sentiment_label: str, market_points: Sequence[str]) -> str:
     if sentiment_score <= -20:
         return "방어적"
@@ -666,6 +746,13 @@ def _safe_float(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _decimal_places(value: Any) -> int:
+    raw = str(value or "").strip()
+    if "." not in raw:
+        return 0
+    return len(raw.split(".")[-1])
 
 
 def _build_gauge(
@@ -759,6 +846,40 @@ def _format_search_interest_visual(trend: SearchTrend) -> str:
         f"{trend.keyword} {traffic_label} {_build_gauge(traffic_value, minimum=0.0, maximum=100.0, width=6)}",
         40,
     )
+
+
+def _format_numeric_value(value: Optional[float], *, decimals: int = 2) -> str:
+    if value is None:
+        return "데이터 부족"
+    if decimals <= 0:
+        return f"{value:,.0f}"
+    return f"{value:,.{decimals}f}"
+
+
+def _format_scoreboard_delta(
+    delta: Optional[float],
+    *,
+    base_value: Optional[float],
+    decimals: int,
+    unit: str = "",
+    include_percent: bool = True,
+) -> str:
+    if delta is None:
+        return "비교값 누적 중"
+
+    marker = _direction_marker(delta)
+    if decimals <= 0:
+        delta_text = f"{delta:+,.0f}"
+    else:
+        delta_text = f"{delta:+,.{decimals}f}"
+    if unit:
+        delta_text = f"{delta_text}{unit}"
+
+    if not include_percent or base_value in (None, 0):
+        return f"{marker} {delta_text}"
+
+    pct_change = (delta / base_value) * 100
+    return f"{marker} {delta_text} ({pct_change:+.2f}%)"
 
 
 def _format_metric_value(metric_key: str, value: Optional[float]) -> str:
@@ -1866,54 +1987,177 @@ def _build_decision_tiles(
     return tiles
 
 
-def _build_market_scoreboard(
+def _extract_scoreboard_metrics(
     *,
     market_indices: Sequence[MarketIndex],
     market_regime: str,
     sentiment_score: int,
-    focus_keywords: Sequence[str],
     datalab_trends: Sequence[SearchTrend],
-) -> Dict[str, Any]:
-    rows: List[List[str]] = []
-    for item in list(market_indices)[:2]:
-        rows.append(
-            [
-                item.name,
-                _format_index_value_visual(item),
-                _truncate_text(item.investor_summary or "수급 방향 확인 필요", 72),
-            ]
-        )
+) -> Dict[str, Dict[str, Any]]:
+    metrics: Dict[str, Dict[str, Any]] = {}
+    tracked_index_names = {"KOSPI", "KOSDAQ", "미국 USD", "WTI", "국제 금"}
 
-    rows.append(
-        [
-            "시장 심리",
-            _format_sentiment_visual(sentiment_score, market_regime),
-            "숫자와 장세 톤을 같이 보며 과도한 낙관·비관을 피합니다.",
-        ]
-    )
+    for item in market_indices:
+        if item.name not in tracked_index_names:
+            continue
+        value = _safe_float(item.value)
+        if value is None:
+            continue
+        metrics[item.name] = {
+            "kind": "market",
+            "value": value,
+            "display": item.value,
+            "daily_change": _safe_float(item.change),
+            "decimals": _decimal_places(item.value),
+        }
 
-    if focus_keywords:
-        rows.append(
-            [
-                "우선 테마",
-                ", ".join(focus_keywords[:2]),
-                "반복 등장 테마가 후속 뉴스와 수급으로 이어지는지 확인합니다.",
-            ]
-        )
+    metrics["시장 심리"] = {
+        "kind": "sentiment",
+        "value": float(sentiment_score),
+        "display": _format_sentiment_visual(sentiment_score, market_regime),
+        "daily_change": None,
+        "decimals": 0,
+    }
 
     if datalab_trends:
         top_trend = datalab_trends[0]
-        rows.append(
-            [
-                "검색 관심",
-                _format_search_interest_visual(top_trend),
-                "실제 매수세로 이어지는지 함께 보지 않으면 과열 해석이 될 수 있습니다.",
-            ]
+        traffic_value = _safe_float(top_trend.traffic)
+        if traffic_value is not None:
+            metrics["검색 관심"] = {
+                "kind": "search_interest",
+                "value": traffic_value,
+                "display": _format_search_interest_visual(top_trend),
+                "daily_change": None,
+                "decimals": _decimal_places(top_trend.traffic),
+                "keyword": top_trend.keyword,
+            }
+
+    return metrics
+
+
+def _scoreboard_reading_point(
+    label: str,
+    market_index_map: Dict[str, MarketIndex],
+) -> str:
+    if label in _SCOREBOARD_HINTS:
+        return _SCOREBOARD_HINTS[label]
+    item = market_index_map.get(label)
+    if item and item.investor_summary:
+        return _truncate_text(item.investor_summary, 80)
+    return "추가 숫자 확인이 필요합니다."
+
+
+def _scoreboard_compare_text(
+    *,
+    label: str,
+    current_metric: Dict[str, Any],
+    baseline_snapshot: Optional[Dict[str, Any]],
+    prefer_daily_change: bool = False,
+) -> str:
+    baseline_metric = (
+        _snapshot_scoreboard_metric(baseline_snapshot, label)
+        if baseline_snapshot
+        else None
+    )
+    current_value = _safe_float(current_metric.get("value"))
+    decimals = int(current_metric.get("decimals") or 0)
+    metric_kind = str(current_metric.get("kind") or "")
+
+    if metric_kind == "search_interest" and baseline_metric:
+        current_keyword = str(current_metric.get("keyword") or "").strip()
+        baseline_keyword = str(baseline_metric.get("keyword") or "").strip()
+        if current_keyword and baseline_keyword and current_keyword != baseline_keyword:
+            return "키워드 교체"
+
+    delta_value: Optional[float] = None
+    base_value: Optional[float] = None
+    if prefer_daily_change:
+        delta_value = _safe_float(current_metric.get("daily_change"))
+        if delta_value is not None and current_value is not None:
+            base_value = current_value - delta_value
+
+    if delta_value is None and baseline_metric:
+        baseline_value = _safe_float(baseline_metric.get("value"))
+        if current_value is not None and baseline_value is not None:
+            delta_value = current_value - baseline_value
+            base_value = baseline_value
+
+    if metric_kind == "sentiment":
+        return _format_scoreboard_delta(
+            delta_value,
+            base_value=base_value,
+            decimals=0,
+            unit="p",
+            include_percent=False,
         )
 
+    return _format_scoreboard_delta(
+        delta_value,
+        base_value=base_value,
+        decimals=decimals,
+        include_percent=True,
+    )
+
+
+def _build_market_scoreboard(
+    *,
+    market_indices: Sequence[MarketIndex],
+    weekly_snapshots: Sequence[Dict[str, Any]],
+    reference_time: Optional[datetime],
+    scoreboard_metrics: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    market_index_map = {item.name: item for item in market_indices}
+    rows: List[List[str]] = []
+    for group_label, labels in _SCOREBOARD_ROW_GROUPS:
+        for label in labels:
+            current_metric = scoreboard_metrics.get(label)
+            if not current_metric:
+                continue
+
+            current_display = str(current_metric.get("display") or "")
+            daily_snapshot = _find_scoreboard_snapshot(
+                weekly_snapshots,
+                label=label,
+                reference_time=reference_time,
+                target_days=1.0,
+                tolerance_days=0.6,
+                fallback_oldest=False,
+            )
+            weekly_snapshot = _find_scoreboard_snapshot(
+                weekly_snapshots,
+                label=label,
+                reference_time=reference_time,
+                target_days=7.0,
+                tolerance_days=2.5,
+                fallback_oldest=True,
+            )
+            rows.append(
+                [
+                    group_label,
+                    label,
+                    current_display or _format_numeric_value(_safe_float(current_metric.get("value"))),
+                    _scoreboard_compare_text(
+                        label=label,
+                        current_metric=current_metric,
+                        baseline_snapshot=daily_snapshot,
+                        prefer_daily_change=True,
+                    ),
+                    _scoreboard_compare_text(
+                        label=label,
+                        current_metric=current_metric,
+                        baseline_snapshot=weekly_snapshot,
+                    ),
+                    _scoreboard_reading_point(label, market_index_map),
+                ]
+            )
+
     return {
-        "headers": ["항목", "현재 값", "읽는 법"],
-        "rows": rows[:5],
+        "headers": ["소주제", "체크 대상", "현재 값", "전일 대비", "1주 대비", "읽는 법"],
+        "rows": rows,
+        "notes": [
+            "전일 대비는 당일 소스 change 또는 전일 snapshot 기준입니다.",
+            "1주 대비는 최근 7일 리포트 snapshot 누적 기준이며, 기준선이 없으면 누적 중으로 표시합니다.",
+        ],
     }
 
 
@@ -2047,6 +2291,12 @@ def build_report_payload(
     )
 
     market_regime = _build_market_regime(sentiment_score, sentiment_label, market_points)
+    scoreboard_metrics = _extract_scoreboard_metrics(
+        market_indices=market_indices,
+        market_regime=market_regime,
+        sentiment_score=sentiment_score,
+        datalab_trends=datalab_trends,
+    )
     current_snapshot = {
         "user_name": user_name,
         "market_regime": market_regime,
@@ -2055,6 +2305,7 @@ def build_report_payload(
         "focus_keywords": focus_keywords,
         "holding_actions": holding_actions,
         "market_points": market_points,
+        "scoreboard_metrics": scoreboard_metrics,
     }
     headline_changes = _build_change_headlines(current_snapshot, previous_snapshots)
     current_snapshot["headline_changes"] = headline_changes
@@ -2105,10 +2356,9 @@ def build_report_payload(
         ),
         "market_scoreboard": _build_market_scoreboard(
             market_indices=market_indices,
-            market_regime=market_regime,
-            sentiment_score=sentiment_score,
-            focus_keywords=focus_keywords,
-            datalab_trends=datalab_trends,
+            weekly_snapshots=weekly_snapshots,
+            reference_time=reference_time,
+            scoreboard_metrics=scoreboard_metrics,
         ),
         "headline_changes": headline_changes,
         "quick_take": quick_take,
