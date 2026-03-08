@@ -108,8 +108,12 @@ class TestReportBuilder(unittest.TestCase):
                 {"keyword": "인공지능", "briefing_md": "### 인공지능\n- GPU 수요가 이어집니다."},
             ],
             theme_news_map={
-                "AI": [NewsArticle(title="AI 서버 투자 확대", link="https://theme1")],
-                "인공지능": [NewsArticle(title="GPU 수요 확대", link="https://theme2")],
+                "AI": [
+                    NewsArticle(title="AI 서버 투자 확대", link="https://theme1"),
+                    NewsArticle(title="빅테크 CAPEX 확대 기대", link="https://theme2"),
+                    NewsArticle(title="HBM 공급 계약 확대", link="https://theme3"),
+                ],
+                "인공지능": [NewsArticle(title="GPU 수요 확대", link="https://theme4")],
             },
             sentiment_score=15,
             sentiment_label="🟡 중립",
@@ -127,7 +131,17 @@ class TestReportBuilder(unittest.TestCase):
                         title="삼성전자 HBM 공급 확대 기대",
                         link="https://holding1",
                         summary="HBM 공급 확대 기대가 살아나고 있습니다.",
-                    )
+                    ),
+                    NewsArticle(
+                        title="삼성전자 파운드리 수율 개선 기대",
+                        link="https://holding2",
+                        summary="첨단 공정 안정화가 고객사 확보에 영향을 줄 수 있습니다.",
+                    ),
+                    NewsArticle(
+                        title="대형 고객사 메모리 발주 증가",
+                        link="https://holding3",
+                        summary="메모리 수요와 ASP 기대가 함께 개선되는 흐름입니다.",
+                    ),
                 ]
             },
             community_posts=[CommunityPost(title="개장 전엔 AI 반도체가 핵심이라는 토론", link="https://community1")],
@@ -231,10 +245,16 @@ class TestReportBuilder(unittest.TestCase):
         self.assertEqual(payload["theme_sections"][0]["keyword"], "인공지능(AI)")
         self.assertIn(
             payload["theme_sections"][0]["related_links"][0]["url"],
-            {"https://theme1", "https://theme2"},
+            {"https://theme1", "https://theme2", "https://theme3", "https://theme4"},
+        )
+        self.assertGreaterEqual(len(payload["theme_sections"][0]["details"]), 3)
+        self.assertGreaterEqual(len(payload["theme_sections"][0]["related_links"]), 3)
+        self.assertTrue(
+            any("빅테크 CAPEX" in item for item in payload["theme_sections"][0]["watch_points"])
         )
         self.assertEqual(payload["holding_sections"][0]["holding"], "삼성전자")
         self.assertEqual(payload["holding_sections"][0]["related_links"][0]["url"], "https://holding1")
+        self.assertGreaterEqual(len(payload["holding_sections"][0]["details"]), 3)
         self.assertEqual(snapshot["holding_actions"]["삼성전자"], "유지")
         self.assertIn("인공지능(AI)", snapshot["focus_keywords"])
         self.assertTrue(any(item["term"] == "AI" for item in payload["glossary"]))
@@ -244,6 +264,55 @@ class TestReportBuilder(unittest.TestCase):
         self.assertTrue(payload["holding_sections"][0]["why_it_matters"])
         self.assertTrue(payload["holding_sections"][0]["watch_points"])
         self.assertEqual(payload["learning_card"]["term"], "AI")
+
+    def test_build_report_payload_uses_subject_specific_theme_reasoning(self):
+        payload, _ = build_report_payload(
+            user_name="홍길동",
+            market_summary_md="## 📈 오늘의 시장 요약\n미국 증시는 빅테크와 금리 해석이 같이 움직이고 있습니다.",
+            market_indices=[],
+            market_news=[],
+            datalab_trends=[],
+            theme_sections=[
+                {
+                    "keyword": "S&P500",
+                    "briefing_md": "### S&P500\n- 빅테크 실적 기대가 유지됩니다.\n- 연준 발언과 고용지표가 민감한 변수입니다.",
+                }
+            ],
+            theme_news_map={
+                "S&P500": [
+                    NewsArticle(
+                        title="S&P500, 빅테크 강세에 최고치 재도전",
+                        link="https://sp1",
+                        summary="나스닥과 대형 기술주가 미국 증시를 견인하고 있습니다.",
+                    ),
+                    NewsArticle(
+                        title="미국 고용지표 앞두고 뉴욕증시 숨 고르기",
+                        link="https://sp2",
+                        summary="연준 금리 기대와 국채금리 변화가 S&P500 변동성을 키우고 있습니다.",
+                    ),
+                ]
+            },
+            sentiment_score=4,
+            sentiment_label="🟡 중립",
+            holding_insights=[],
+            holding_news_map={},
+            community_posts=[],
+            recent_report_rows=[],
+            weekly_report_rows=[],
+            monthly_report_rows=[],
+            connector_success_rate_7d={},
+            connector_success_rate_30d={},
+            avg_feedback_score_30d=0,
+            avg_accuracy_30d=0,
+            connector_daily_rollups_7d=[],
+            recent_connector_failures_7d=[],
+            connector_metric_trends_7d=[],
+        )
+
+        theme_section = payload["theme_sections"][0]
+        self.assertIn("빅테크", theme_section["why_it_matters"])
+        self.assertTrue(any("빅테크 가이던스" in item for item in theme_section["watch_points"]))
+        self.assertGreaterEqual(len(theme_section["details"]), 3)
 
     def test_build_report_payload_filters_failure_strings_from_sections(self):
         payload, _ = build_report_payload(
