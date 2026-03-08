@@ -326,8 +326,8 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("<h1 style=", html_text)
         self.assertIn("<table role=\"presentation\"", html_text)
         self.assertIn("<body style=", html_text)
-        self.assertIn("#845ec2", html_text)
-        self.assertIn("#ff6f91", html_text)
+        self.assertIn("#AEBDCA", html_text)
+        self.assertIn("#E8DFCA", html_text)
         self.assertIn("href=\"https://example.com\"", markdown_to_html("[기사](https://example.com)"))
 
 

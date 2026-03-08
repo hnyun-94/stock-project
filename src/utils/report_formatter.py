@@ -12,14 +12,15 @@ from typing import Optional
 
 import markdown
 
-_PRIMARY_COLOR = "#845ec2"
-_PRIMARY_DARK = "#5f3aa5"
-_PRIMARY_TINT = "#f3ecff"
-_ACCENT_COLOR = "#ff6f91"
-_ACCENT_TINT = "#fff1f5"
-_CARD_BORDER = "#e6d7ff"
-_TEXT_COLOR = "#2d2140"
-_MUTED_TEXT = "#6d5b86"
+_PRIMARY_COLOR = "#AEBDCA"
+_PRIMARY_DARK = "#5F6D7A"
+_PRIMARY_TINT = "#F3F6F8"
+_ACCENT_COLOR = "#E8DFCA"
+_ACCENT_TINT = "#FBF8F1"
+_CARD_BORDER = "#D9E1E7"
+_TEXT_COLOR = "#33424F"
+_MUTED_TEXT = "#6E7B86"
+_BODY_BACKGROUND = "#F6F4EE"
 _TABLE_HEADER_ALIASES = {
     "구분": "체크 대상",
     "내용": "현재 판단",
@@ -479,7 +480,7 @@ def markdown_to_html(markdown_str: str) -> str:
         ),
         (
             r"<h3>",
-            f'<h3 style="color:{_PRIMARY_COLOR};font-size:16px;margin:18px 0 10px;line-height:1.45;">',
+            f'<h3 style="color:{_PRIMARY_DARK};font-size:16px;margin:18px 0 10px;line-height:1.45;">',
         ),
         (
             r"<p>",
@@ -510,7 +511,7 @@ def markdown_to_html(markdown_str: str) -> str:
         (
             r"<th>",
             (
-                f'<th style="background:{_PRIMARY_COLOR};color:#ffffff;font-weight:700;font-size:13px;'
+                f'<th style="background:{_PRIMARY_COLOR};color:{_PRIMARY_DARK};font-weight:700;font-size:13px;'
                 f'padding:10px 8px;border:1px solid {_CARD_BORDER};text-align:left;vertical-align:top;">'
             ),
         ),
@@ -527,7 +528,7 @@ def markdown_to_html(markdown_str: str) -> str:
         ),
         (
             r"<a href=",
-            f'<a style="color:{_ACCENT_COLOR};text-decoration:none;font-weight:600;" href=',
+            f'<a style="color:{_PRIMARY_DARK};text-decoration:underline;text-decoration-color:{_ACCENT_COLOR};font-weight:600;" href=',
         ),
         (
             r"<em>",
@@ -546,11 +547,11 @@ def markdown_to_html(markdown_str: str) -> str:
     <head>
     <meta charset="utf-8">
     <style>
-        body {{ margin: 0; background: #f7f2ff; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', Dotum, sans-serif; color: {_TEXT_COLOR}; }}
+        body {{ margin: 0; background: {_BODY_BACKGROUND}; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', Dotum, sans-serif; color: {_TEXT_COLOR}; }}
     </style>
     </head>
-    <body style="margin:0;background:#f7f2ff;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width:100%;background:#f7f2ff;">
+    <body style="margin:0;background:{_BODY_BACKGROUND};">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width:100%;background:{_BODY_BACKGROUND};">
             <tr>
                 <td align="center" style="padding:24px 12px 40px;">
                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:860px;width:100%;background:#ffffff;border:1px solid {_CARD_BORDER};border-radius:18px;">
