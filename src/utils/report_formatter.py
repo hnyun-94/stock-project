@@ -361,11 +361,13 @@ def build_structured_markdown_report(report_payload: dict) -> str:
 
     reliability_badge = report_payload.get("reliability_badge")
     if reliability_badge:
+        gauge = str(reliability_badge.get("gauge", "")).strip()
+        gauge_text = f" · {gauge}" if gauge else ""
         lines.extend(
             [
                 _emphasize_text(
                     f"> 리포트 신뢰도: {reliability_badge.get('label', '보통')} "
-                    f"({reliability_badge.get('score', 0)}/100) - {reliability_badge.get('reason', '')}"
+                    f"({reliability_badge.get('score', 0)}/100){gauge_text} - {reliability_badge.get('reason', '')}"
                 ),
                 "",
             ]

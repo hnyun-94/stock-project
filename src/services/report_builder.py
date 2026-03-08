@@ -615,6 +615,114 @@ def _format_rate_text(rate: float) -> str:
     return f"{rate * 100:.0f}%"
 
 
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            cleaned = str(value).replace(",", "").strip()
+            cleaned = re.sub(r"[^0-9+\-.]", "", cleaned)
+            if not cleaned or cleaned in {"+", "-", ".", "+.", "-."}:
+                return None
+            return float(cleaned)
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_gauge(
+    value: Optional[float],
+    *,
+    minimum: float,
+    maximum: float,
+    width: int = 10,
+    filled: str = "█",
+    empty: str = "░",
+) -> str:
+    if value is None or maximum <= minimum or width <= 0:
+        return empty * max(width, 0)
+
+    ratio = (value - minimum) / (maximum - minimum)
+    ratio = max(0.0, min(1.0, ratio))
+    filled_count = int(round(ratio * width))
+    filled_count = max(0, min(width, filled_count))
+    return filled * filled_count + empty * (width - filled_count)
+
+
+def _build_sparkline(values: Sequence[Optional[float]]) -> str:
+    ticks = "▁▂▃▄▅▆▇█"
+    valid_values = [float(value) for value in values if value is not None]
+    if len(valid_values) < 2:
+        return ""
+
+    minimum = min(valid_values)
+    maximum = max(valid_values)
+    if minimum == maximum:
+        return "▅" * len(valid_values)
+
+    parts: List[str] = []
+    for value in valid_values:
+        ratio = (value - minimum) / (maximum - minimum)
+        index = min(len(ticks) - 1, max(0, int(round(ratio * (len(ticks) - 1)))))
+        parts.append(ticks[index])
+    return "".join(parts)
+
+
+def _direction_marker(value: Optional[float]) -> str:
+    if value is None:
+        return "→"
+    if value > 0:
+        return "▲"
+    if value < 0:
+        return "▼"
+    return "→"
+
+
+def _format_rate_visual(rate: float) -> str:
+    return f"{_format_rate_text(rate)} {_build_gauge(rate * 100.0, minimum=0.0, maximum=100.0, width=8)}"
+
+
+def _format_latency_visual(avg_latency_ms: int) -> str:
+    if avg_latency_ms < 1500:
+        label = "빠름"
+    elif avg_latency_ms >= 4000:
+        label = "지연"
+    else:
+        label = "보통"
+    return f"{avg_latency_ms}ms · {label}"
+
+
+def _format_sentiment_visual(score: int, market_regime: str) -> str:
+    gauge = _build_gauge(float(score), minimum=-100.0, maximum=100.0, width=8)
+    return f"{score:+d} / {market_regime} {gauge}"
+
+
+def _format_index_value_visual(item: MarketIndex) -> str:
+    base_value = item.value or "수치 없음"
+    change_value = _safe_float(item.change)
+    if not item.change:
+        return base_value
+    return f"{base_value} {_direction_marker(change_value)} {item.change}"
+
+
+def _format_search_interest_visual(trend: SearchTrend) -> str:
+    if not trend.traffic:
+        return _truncate_text(f"{trend.keyword} N/A", 40)
+
+    traffic_value = _safe_float(trend.traffic)
+    if traffic_value is None:
+        return _truncate_text(f"{trend.keyword} {trend.traffic}", 40)
+
+    if traffic_value.is_integer():
+        traffic_label = str(int(traffic_value))
+    else:
+        traffic_label = f"{traffic_value:.1f}"
+    return _truncate_text(
+        f"{trend.keyword} {traffic_label} {_build_gauge(traffic_value, minimum=0.0, maximum=100.0, width=6)}",
+        40,
+    )
+
+
 def _format_metric_value(metric_key: str, value: Optional[float]) -> str:
     if value is None:
         return "데이터 부족"
@@ -629,6 +737,25 @@ def _format_metric_delta(metric_key: str, value: Optional[float]) -> str:
     if metric_key.endswith("series_value_x100"):
         return f"{value / 100:+.2f}%p"
     return f"{int(round(value)):+d}건"
+
+
+def _format_metric_value_visual(metric_key: str, row: Dict[str, Any]) -> str:
+    latest_value = _safe_float(row.get("latest_value"))
+    base_text = _format_metric_value(metric_key, latest_value)
+    sparkline = _build_sparkline(
+        [
+            _safe_float(row.get("prev_7d_value")),
+            _safe_float(row.get("prev_1d_value")),
+            latest_value,
+        ]
+    )
+    if not sparkline:
+        return base_text
+    return f"{base_text} {sparkline}"
+
+
+def _format_metric_delta_visual(metric_key: str, value: Optional[float]) -> str:
+    return f"{_direction_marker(value)} {_format_metric_delta(metric_key, value)}"
 
 
 def _connector_rollup_label(row: Dict[str, Any]) -> str:
@@ -729,8 +856,8 @@ def _build_data_quality_card(
         [
             str(row.get("day") or ""),
             str(row.get("source_id") or ""),
-            _format_rate_text(float(row.get("success_rate") or 0.0)),
-            f"{int(row.get('avg_latency_ms') or 0)}ms",
+            _format_rate_visual(float(row.get("success_rate") or 0.0)),
+            _format_latency_visual(int(row.get("avg_latency_ms") or 0)),
             _connector_rollup_label(row),
         ]
         for row in list(connector_daily_rollups_7d)[:6]
@@ -808,7 +935,12 @@ def _build_reliability_badge(
         f"최신 데이터 {freshness_gap}일 전, "
         f"주의 source {caution_sources}개"
     )
-    return {"label": label, "score": score, "reason": reason}
+    return {
+        "label": label,
+        "score": score,
+        "reason": reason,
+        "gauge": _build_gauge(float(score), minimum=0.0, maximum=100.0, width=10),
+    }
 
 
 def _infer_market_style(
@@ -914,9 +1046,9 @@ def _build_domain_signal_sections(
             rows.append(
                 [
                     label,
-                    _format_metric_value(str(row["metric_key"]), row.get("latest_value")),
-                    _format_metric_delta(str(row["metric_key"]), row.get("delta_1d")),
-                    _format_metric_delta(str(row["metric_key"]), row.get("delta_7d")),
+                    _format_metric_value_visual(str(row["metric_key"]), row),
+                    _format_metric_delta_visual(str(row["metric_key"]), _safe_float(row.get("delta_1d"))),
+                    _format_metric_delta_visual(str(row["metric_key"]), _safe_float(row.get("delta_7d"))),
                 ]
             )
 
@@ -962,9 +1094,9 @@ def _build_domain_signal_sections(
             rows.append(
                 [
                     "FRED 금리",
-                    _format_metric_value("fred:series_value_x100", fred.get("latest_value")),
-                    _format_metric_delta("fred:series_value_x100", fred.get("delta_1d")),
-                    _format_metric_delta("fred:series_value_x100", fred.get("delta_7d")),
+                    _format_metric_value_visual("fred:series_value_x100", fred),
+                    _format_metric_delta_visual("fred:series_value_x100", _safe_float(fred.get("delta_1d"))),
+                    _format_metric_delta_visual("fred:series_value_x100", _safe_float(fred.get("delta_7d"))),
                 ]
             )
         if sec:
@@ -979,9 +1111,9 @@ def _build_domain_signal_sections(
             rows.append(
                 [
                     "SEC 샘플",
-                    _format_metric_value(str(sec["metric_key"]), sec.get("latest_value")),
-                    _format_metric_delta(str(sec["metric_key"]), sec.get("delta_1d")),
-                    _format_metric_delta(str(sec["metric_key"]), sec.get("delta_7d")),
+                    _format_metric_value_visual(str(sec["metric_key"]), sec),
+                    _format_metric_delta_visual(str(sec["metric_key"]), _safe_float(sec.get("delta_1d"))),
+                    _format_metric_delta_visual(str(sec["metric_key"]), _safe_float(sec.get("delta_7d"))),
                 ]
             )
 
@@ -1646,7 +1778,7 @@ def _build_market_scoreboard(
         rows.append(
             [
                 item.name,
-                item.value or "수치 없음",
+                _format_index_value_visual(item),
                 _truncate_text(item.investor_summary or "수급 방향 확인 필요", 72),
             ]
         )
@@ -1654,7 +1786,7 @@ def _build_market_scoreboard(
     rows.append(
         [
             "시장 심리",
-            f"{sentiment_score:+d} / {market_regime}",
+            _format_sentiment_visual(sentiment_score, market_regime),
             "숫자와 장세 톤을 같이 보며 과도한 낙관·비관을 피합니다.",
         ]
     )
@@ -1673,7 +1805,7 @@ def _build_market_scoreboard(
         rows.append(
             [
                 "검색 관심",
-                _truncate_text(f"{top_trend.keyword} {top_trend.traffic or 'N/A'}", 40),
+                _format_search_interest_visual(top_trend),
                 "실제 매수세로 이어지는지 함께 보지 않으면 과열 해석이 될 수 있습니다.",
             ]
         )
