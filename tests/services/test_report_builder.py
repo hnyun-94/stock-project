@@ -206,9 +206,12 @@ class TestReportBuilder(unittest.TestCase):
 
         self.assertEqual(payload["title"], "🌤️ 오늘의 주식 인사이트 리포트")
         self.assertEqual(payload["reliability_badge"]["label"], "높음")
+        self.assertEqual(payload["reliability_badge"]["gauge"], "█████████░")
         self.assertEqual(len(payload["headline_changes"]), 3)
         self.assertEqual(payload["decision_tiles"][0]["label"], "시장 톤")
         self.assertEqual(payload["market_scoreboard"]["headers"][0], "항목")
+        self.assertTrue(any(row[0] == "시장 심리" and "█" in row[1] for row in payload["market_scoreboard"]["rows"]))
+        self.assertTrue(any(row[0] == "검색 관심" and "█" in row[1] for row in payload["market_scoreboard"]["rows"]))
         self.assertEqual(len(payload["insight_lenses"]), 3)
         self.assertEqual(payload["insight_lenses"][0]["title"], "경제 온도")
         self.assertEqual(payload["insight_lenses"][1]["title"], "자금 흐름")
@@ -220,7 +223,11 @@ class TestReportBuilder(unittest.TestCase):
         self.assertTrue(payload["session_issue_section"]["related_links"])
         self.assertIsNotNone(payload["data_quality_section"])
         self.assertEqual(payload["data_quality_section"]["table_headers"][0], "날짜")
+        self.assertIn("█", payload["data_quality_section"]["table_rows"][0][2])
+        self.assertIn("· 빠름", payload["data_quality_section"]["table_rows"][0][3])
         self.assertEqual(payload["domain_signal_sections"][0]["title"], "OpenDART 공시 흐름")
+        self.assertIn("▁", payload["domain_signal_sections"][0]["table_rows"][0][1])
+        self.assertTrue(payload["domain_signal_sections"][0]["table_rows"][0][2].startswith("▲"))
         self.assertEqual(payload["theme_sections"][0]["keyword"], "인공지능(AI)")
         self.assertIn(
             payload["theme_sections"][0]["related_links"][0]["url"],

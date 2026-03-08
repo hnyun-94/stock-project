@@ -172,6 +172,7 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                 "reliability_badge": {
                     "label": "높음",
                     "score": 88,
+                    "gauge": "█████████░",
                     "reason": "최근 7일 평균 성공률 97%, 최신 데이터 0일 전, 주의 source 0개",
                 },
                 "decision_tiles": [
@@ -180,7 +181,7 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                 ],
                 "market_scoreboard": {
                     "headers": ["항목", "현재 값", "읽는 법"],
-                    "rows": [["KOSPI", "2650.10", "외국인 수급 확인"], ["시장 심리", "+8 / 중립", "과열 여부 확인"]],
+                    "rows": [["KOSPI", "2650.10", "외국인 수급 확인"], ["시장 심리", "+8 / 중립 ████░░░░", "과열 여부 확인"]],
                 },
                 "quick_take": {
                     "summary": "핵심 요약",
@@ -229,7 +230,7 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                     "negative_view": "부정",
                     "outlook": "전망",
                     "table_headers": ["날짜", "소스", "성공률", "평균 지연", "판단"],
-                    "table_rows": [["2026-03-07", "opendart", "100%", "120ms", "안정"]],
+                    "table_rows": [["2026-03-07", "opendart", "100% ████████", "120ms · 빠름", "안정"]],
                 },
                 "domain_signal_sections": [
                     {
@@ -243,7 +244,7 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
                         "negative_view": "부정",
                         "outlook": "전망",
                         "table_headers": ["지표", "최근값", "1D 변화", "7D 변화"],
-                        "table_rows": [["실적/영업", "6건", "+2건", "+4건"]],
+                        "table_rows": [["실적/영업", "6건 ▁▅█", "▲ +2건", "▲ +4건"]],
                     }
                 ],
                 "theme_sections": [
@@ -303,8 +304,13 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("## 🕒 시간대 압축판", markdown_text)
         self.assertTrue(markdown_text.startswith("# 🌤️ 리포트"))
         self.assertIn("**리포트 신뢰도**: 높음", markdown_text)
+        self.assertIn("█████████░", markdown_text)
         self.assertIn("| 체크 대상 | 현재 판단 | 읽는 이유 |", markdown_text)
         self.assertIn("| 체크 대상 | 오늘 숫자 | 읽는 포인트 |", markdown_text)
+        self.assertIn("+8 / **중립** ████░░░░", markdown_text)
+        self.assertIn("100% ████████", markdown_text)
+        self.assertIn("6건 ▁▅█", markdown_text)
+        self.assertIn("▲ +2건", markdown_text)
         self.assertIn("| 기간 | 핵심 요약 | 바로 볼 점 |", markdown_text)
         self.assertIn("## 🛰 데이터 신뢰도", markdown_text)
         self.assertIn("## 🧪 보조 지표 해석", markdown_text)
