@@ -805,7 +805,15 @@ def _build_theme_context(
 
     context_community = "[관련 커뮤니티 여론 (인기글)]\n"
     for i, post in enumerate(community_posts[:5], 1):
-        context_community += f"{i}. {post.title}\n"
+        meta_bits = []
+        if post.views:
+            meta_bits.append(f"조회 {post.views}")
+        if post.likes:
+            meta_bits.append(f"좋아요 {post.likes}")
+        if post.comments:
+            meta_bits.append(f"댓글 {post.comments}")
+        meta_suffix = f" ({', '.join(meta_bits)})" if meta_bits else ""
+        context_community += f"{i}. {post.title}{meta_suffix}\n"
 
     return context_news, context_community
 
