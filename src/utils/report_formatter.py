@@ -119,32 +119,7 @@ def _append_card(
         lines.append(f"> {summary_label}: {_emphasize_text(summary)}")
         lines.append("")
 
-    details = card.get("details", [])
-    if details:
-        lines.append("**핵심 근거**")
-        for idx, detail in enumerate(details, 1):
-            lines.append(f"{idx}. {_emphasize_text(detail)}")
-        lines.append("")
-
-    why_it_matters = card.get("why_it_matters")
-    if why_it_matters:
-        lines.append("**왜 중요한가**")
-        lines.append(f"- {_emphasize_text(why_it_matters)}")
-        lines.append("")
-
-    watch_points = card.get("watch_points", [])
-    if watch_points:
-        lines.append("**지금 볼 것**")
-        for item in watch_points:
-            lines.append(f"- {_emphasize_text(item)}")
-        lines.append("")
-
-    related_links = card.get("related_links", [])
-    if related_links:
-        lines.append("**관련 기사**")
-        for link in related_links:
-            lines.append(f"- [{link.get('label', '관련 기사')}]({link.get('url', '#')})")
-        lines.append("")
+    _append_evidence_bundle(lines, card=card, detail_limit=5, link_limit=4)
 
     lines.append("**세 가지 시각**")
     if card.get("positive_view"):
@@ -205,6 +180,54 @@ def _append_three_view_table(lines: list[str], card: dict) -> None:
     )
 
 
+def _format_inline_links(links: list[dict], *, limit: int) -> str:
+    formatted = [
+        f"[{link.get('label', '관련 기사')}]({link.get('url', '#')})"
+        for link in links[:limit]
+        if link.get("label") and link.get("url")
+    ]
+    return " · ".join(formatted)
+
+
+def _append_evidence_bundle(
+    lines: list[str],
+    *,
+    card: dict,
+    detail_limit: int = 4,
+    link_limit: int = 4,
+) -> None:
+    details = [
+        str(detail).strip()
+        for detail in card.get("details", [])[:detail_limit]
+        if str(detail).strip()
+    ]
+    why_it_matters = str(card.get("why_it_matters") or "").strip()
+    watch_points = [
+        str(item).strip()
+        for item in card.get("watch_points", [])[:detail_limit]
+        if str(item).strip()
+    ]
+    inline_links = _format_inline_links(card.get("related_links", []), limit=link_limit)
+
+    bundle_rows: list[tuple[str, str]] = []
+    if details:
+        bundle_rows.append(("핵심 근거", " / ".join(_emphasize_text(detail) for detail in details)))
+    if why_it_matters:
+        bundle_rows.append(("왜 중요한가", _emphasize_text(why_it_matters)))
+    if watch_points:
+        bundle_rows.append(("지금 볼 것", " / ".join(_emphasize_text(item) for item in watch_points)))
+    if inline_links:
+        bundle_rows.append(("관련 기사", inline_links))
+
+    if not bundle_rows:
+        return
+
+    lines.append("**근거 묶음**")
+    for label, content in bundle_rows:
+        lines.append(f"- {label}: {content}")
+    lines.append("")
+
+
 def _append_compact_brief(
     lines: list[str],
     *,
@@ -225,21 +248,7 @@ def _append_compact_brief(
         lines.append(f"> {_emphasize_text(summary)}")
         lines.append("")
 
-    details = card.get("details", [])
-    if details:
-        for idx, detail in enumerate(details[:4], 1):
-            lines.append(f"- 핵심 근거 {idx}: {_emphasize_text(detail)}")
-    if card.get("why_it_matters"):
-        lines.append(f"- 왜 중요한가: {_emphasize_text(card['why_it_matters'])}")
-    if card.get("watch_points"):
-        for idx, item in enumerate(card["watch_points"][:4], 1):
-            lines.append(f"- 지금 볼 것 {idx}: {_emphasize_text(item)}")
-    if card.get("related_links"):
-        for idx, link in enumerate(card["related_links"][:4], 1):
-            lines.append(
-                f"- 관련 기사 {idx}: "
-                f"[{link.get('label', '관련 기사')}]({link.get('url', '#')})"
-            )
+    _append_evidence_bundle(lines, card=card, detail_limit=4, link_limit=4)
     if card.get("outlook"):
         lines.append(f"- 다음 체크포인트: {_emphasize_text(card['outlook'])}")
     if card.get("action"):
@@ -311,21 +320,7 @@ def _append_lens_section(lines: list[str], insight_lenses: list[dict]) -> None:
         if lens.get("summary"):
             lines.append(f"> {_emphasize_text(lens['summary'])}")
             lines.append("")
-        if lens.get("details"):
-            for idx, detail in enumerate(lens["details"][:4], 1):
-                lines.append(f"- 핵심 근거 {idx}: {_emphasize_text(detail)}")
-        if lens.get("why_it_matters"):
-            lines.append(f"- 왜 중요한가: {_emphasize_text(lens['why_it_matters'])}")
-        if lens.get("watch_points"):
-            for idx, item in enumerate(lens["watch_points"][:4], 1):
-                lines.append(f"- 지금 볼 것 {idx}: {_emphasize_text(item)}")
-        if lens.get("related_links"):
-            for idx, link in enumerate(lens["related_links"][:3], 1):
-                lines.append(
-                    f"- 관련 기사 {idx}: "
-                    f"[{link.get('label', '관련 기사')}]({link.get('url', '#')})"
-                )
-        lines.append("")
+        _append_evidence_bundle(lines, card=lens, detail_limit=4, link_limit=3)
         _append_three_view_table(lines, lens)
 
 

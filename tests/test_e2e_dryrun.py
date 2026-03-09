@@ -342,9 +342,10 @@ class TestCacheAndDedupIntegration(unittest.TestCase):
         self.assertIn("[시장 기사](https://news.example.com/market)", markdown_text)
         self.assertIn("[삼성 기사](https://news.example.com/samsung)", markdown_text)
         self.assertIn("[경제 기사](https://news.example.com/economy)", markdown_text)
-        self.assertIn("- 핵심 근거 2: 근거 2", markdown_text)
-        self.assertIn("- 지금 볼 것 2: 환율", markdown_text)
-        self.assertIn("- 관련 기사 2: [추가 삼성 기사](https://news.example.com/samsung-2)", markdown_text)
+        self.assertIn("**근거 묶음**", markdown_text)
+        self.assertIn("- 핵심 근거: 근거 1 / 근거 2 / 근거 3", markdown_text)
+        self.assertIn("- 지금 볼 것: 수급 / 환율 / 금리", markdown_text)
+        self.assertIn("- 관련 기사: [삼성 기사](https://news.example.com/samsung) · [추가 삼성 기사](https://news.example.com/samsung-2)", markdown_text)
         self.assertIn("**중립**", markdown_text)
         self.assertNotIn("**인공지능(**AI**)**", markdown_text)
 
