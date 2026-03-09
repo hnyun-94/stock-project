@@ -5,15 +5,88 @@
 디시인사이드 주식갤러리(식갤)의 개념글(인기글)을 수집하여 시장의 민심과 화제성을 파악합니다.
 """
 
-from typing import List, Dict
+import asyncio
 import os
-import aiohttp
-from src.crawlers.http_client import get_session
-from bs4 import BeautifulSoup
+import re
+from typing import Dict, List
+from urllib.parse import urljoin
 
+import aiohttp
+from bs4 import BeautifulSoup
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+from src.crawlers.http_client import get_session
 from src.models import CommunityPost
 from src.utils.logger import global_logger
-from tenacity import retry, wait_exponential, stop_after_attempt
+
+_STOCKPLUS_INSIGHT_LIST_URL = "https://insight.stockplus.com/articles"
+_STOCKPLUS_POLL_PREFIX = "[개미의 선택]"
+
+
+def _normalize_whitespace(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _extract_stockplus_poll_candidates(html: str, max_items: int) -> List[tuple[str, str]]:
+    """증권플러스 인사이트 목록에서 커뮤니티 투표형 아티클 후보를 추립니다."""
+    soup = BeautifulSoup(html, "html.parser")
+    candidates: List[tuple[str, str]] = []
+    seen_links: set[str] = set()
+
+    for link_tag in soup.select("a[href*='/articles/']"):
+        title = _normalize_whitespace(link_tag.get_text(" ", strip=True))
+        href = (link_tag.get("href") or "").strip()
+        if not title or not href or _STOCKPLUS_POLL_PREFIX not in title:
+            continue
+        full_link = urljoin(_STOCKPLUS_INSIGHT_LIST_URL, href)
+        if full_link in seen_links:
+            continue
+        seen_links.add(full_link)
+        candidates.append((title, full_link))
+        if len(candidates) >= max_items:
+            break
+
+    return candidates
+
+
+def _build_stockplus_poll_post(article_title: str, article_html: str, article_link: str) -> CommunityPost:
+    """증권플러스 투표형 아티클에서 요약 가능한 커뮤니티 신호를 추출합니다."""
+    text = _normalize_whitespace(BeautifulSoup(article_html, "html.parser").get_text(" ", strip=True))
+    base_title = article_title.replace(_STOCKPLUS_POLL_PREFIX, "", 1).strip(" :|-")
+
+    participant_match = re.search(r"(\d{1,3}(?:,\d{3})*)명(?:이)? 참여", text)
+    percentages = []
+    for value in re.findall(r"(\d+(?:\.\d+)?)%", text):
+        if value not in percentages:
+            percentages.append(value)
+        if len(percentages) >= 2:
+            break
+
+    title = f"[증권플러스 투표] {base_title}".strip()
+    if len(percentages) >= 2:
+        title = f"{title} · {percentages[0]}% / {percentages[1]}%"
+    if participant_match:
+        title = f"{title} ({participant_match.group(1)}명 참여)"
+
+    return CommunityPost(
+        title=title,
+        link=article_link,
+        source_id="stockplus_insight",
+        views=participant_match.group(1) if participant_match else None,
+    )
+
+
+async def _fetch_stockplus_poll_post(title: str, link: str) -> CommunityPost | None:
+    headers = {"User-Agent": "Mozilla/5.0"}
+    session = await get_session()
+    async with session.get(link, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as res:
+        res.raise_for_status()
+        html = await res.text()
+    try:
+        return _build_stockplus_poll_post(title, html, link)
+    except Exception as exc:
+        global_logger.warning(f"[StockplusInsight] 아티클 파싱 실패: {link} ({exc})")
+        return None
 
 @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3))
 async def get_popular_stocks() -> List[Dict[str, str]]:
@@ -94,7 +167,13 @@ async def get_naver_board_posts(code: str, name: str, max_items: int = 3) -> Lis
     for t in titles[:max_items]:
         title_text = t.get("title") or t.get_text(strip=True)
         link = "https://finance.naver.com" + t["href"]
-        posts.append(CommunityPost(title=f"[{name}] {title_text}", link=link))
+        posts.append(
+            CommunityPost(
+                title=f"[{name}] {title_text}",
+                link=link,
+                source_id="naver_board",
+            )
+        )
         
     return posts
 
@@ -135,10 +214,49 @@ async def get_dc_stock_gallery(max_items: int = 5) -> List[CommunityPost]:
         if title_tag:
             title = title_tag.get_text(strip=True)
             link = "https://gall.dcinside.com" + title_tag["href"]
-            posts.append(CommunityPost(title=f"[식갤] {title}", link=link))
+            posts.append(
+                CommunityPost(
+                    title=f"[식갤] {title}",
+                    link=link,
+                    source_id="dc_stock_gallery",
+                )
+            )
             if len(posts) >= max_items:
                 break
                 
+    return posts
+
+
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3))
+async def get_stockplus_insight_signals(max_items: int = 2) -> List[CommunityPost]:
+    """증권플러스 인사이트의 커뮤니티 투표형 시그널만 추려 수집합니다."""
+    headers = {"User-Agent": "Mozilla/5.0"}
+    session = await get_session()
+    async with session.get(
+        _STOCKPLUS_INSIGHT_LIST_URL,
+        headers=headers,
+        timeout=aiohttp.ClientTimeout(total=10),
+    ) as res:
+        res.raise_for_status()
+        html = await res.text()
+
+    candidates = _extract_stockplus_poll_candidates(html, max_items=max_items * 2)
+    if not candidates:
+        return []
+
+    fetched = await asyncio.gather(
+        *[_fetch_stockplus_poll_post(title, link) for title, link in candidates],
+        return_exceptions=True,
+    )
+
+    posts: List[CommunityPost] = []
+    for result in fetched:
+        if isinstance(result, CommunityPost):
+            posts.append(result)
+        elif isinstance(result, Exception):
+            global_logger.warning(f"[StockplusInsight] 상세 수집 실패: {result}")
+        if len(posts) >= max_items:
+            break
     return posts
 
 @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3))
@@ -167,7 +285,7 @@ async def get_reddit_wallstreetbets(max_items: int = 5) -> List[CommunityPost]:
 
     url = f"https://www.reddit.com/r/wallstreetbets/hot.json?limit={max_items}"
     headers = {
-        "User-Agent": f"stock-report-bot/1.0 (by /u/stock_report_bot)",
+        "User-Agent": "stock-report-bot/1.0 (by /u/stock_report_bot)",
         "Accept": "application/json",
     }
     
@@ -187,9 +305,16 @@ async def get_reddit_wallstreetbets(max_items: int = 5) -> List[CommunityPost]:
                     full_link = f"https://www.reddit.com{permalink}"
                     
                     if title and permalink:
-                        posts.append(CommunityPost(title=f"[WSB|추천:{upvotes}] {title}", link=full_link))
+                        posts.append(
+                            CommunityPost(
+                                title=f"[WSB|추천:{upvotes}] {title}",
+                                link=full_link,
+                                source_id="reddit_wallstreetbets",
+                                likes=str(upvotes),
+                            )
+                        )
             elif res.status == 403:
-                global_logger.warning(f"[Reddit] 403 Forbidden - 봇 차단됨 (CI/CD 환경에서는 REDDIT_ENABLED=false 권장)")
+                global_logger.warning("[Reddit] 403 Forbidden - 봇 차단됨 (CI/CD 환경에서는 REDDIT_ENABLED=false 권장)")
             else:
                 global_logger.warning(f"[Reddit] HTTP {res.status} - 수집 실패")
     except Exception as e:

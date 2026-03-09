@@ -5,14 +5,23 @@ Playwright를 백그라운드(Headless)로 띄워
 자바스크립트로 렌더링되거나 모바일 뷰 전용인 커뮤니티(토스, 블라인드 등)를 수집합니다.
 """
 
+import re
 from typing import List
-from playwright.async_api import async_playwright
-from tenacity import retry, wait_exponential, stop_after_attempt
 
-from src.models import CommunityPost
-from src.utils.logger import global_logger
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from src.crawlers.browser_pool import BrowserPool
+from src.models import CommunityPost
 from src.utils.circuit_breaker import async_circuit_breaker
+from src.utils.logger import global_logger
+
+
+def _extract_blind_metric(text: str, label: str) -> str | None:
+    """블라인드 카드 텍스트에서 조회/좋아요/댓글 수를 추출합니다."""
+    match = re.search(rf"{label}\s*([0-9][0-9,\.KkMm만천]*)", text)
+    if not match:
+        return None
+    return match.group(1)
 
 @async_circuit_breaker(failure_threshold=2, recovery_timeout=60, fallback_value=[])
 @retry(wait=wait_exponential(multiplier=2, min=5, max=15), stop=stop_after_attempt(3))
@@ -45,8 +54,18 @@ async def get_blind_stock_lounge(max_items: int = 3) -> List[CommunityPost]:
             if title_elem and link_elem:
                 title = await title_elem.inner_text()
                 href = await link_elem.get_attribute("href")
+                card_text = await el.inner_text()
                 full_link = f"https://www.teamblind.com{href}" if href.startswith("/") else href
-                posts.append(CommunityPost(title=f"[블라인드] {title}", link=full_link))
+                posts.append(
+                    CommunityPost(
+                        title=f"[블라인드] {title.strip()}",
+                        link=full_link,
+                        source_id="blind_stock_lounge",
+                        views=_extract_blind_metric(card_text, "조회수"),
+                        likes=_extract_blind_metric(card_text, "좋아요"),
+                        comments=_extract_blind_metric(card_text, "댓글"),
+                    )
+                )
                 
         # 리소스 반환 
         await context.close()

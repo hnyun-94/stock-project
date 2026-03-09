@@ -21,7 +21,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 from src.crawlers.browser_pool import BrowserPool
-from src.crawlers.community import get_dc_stock_gallery, get_reddit_wallstreetbets
+from src.crawlers.community import (
+    get_dc_stock_gallery,
+    get_reddit_wallstreetbets,
+    get_stockplus_insight_signals,
+)
+from src.crawlers.dynamic_community import get_blind_stock_lounge
 from src.crawlers.http_client import close_session
 from src.crawlers.market_index import get_market_indices
 from src.crawlers.naver_datalab import get_naver_datalab_trends
@@ -36,6 +41,7 @@ from src.services.ai_tracker import record_prediction_snapshot
 from src.services.community_safety import (
     filter_community_posts_by_source,
     flatten_safe_community_posts,
+    get_enabled_community_sources,
 )
 from src.services.connector_alerts import dispatch_connector_health_alerts
 from src.services.feedback_manager import generate_feedback_links_html
@@ -152,25 +158,45 @@ async def run_pipeline() -> None:
     try:
         # Phase 1: 모든 사용자에게 공통인 시장 컨텍스트를 한 번만 수집합니다.
         global_logger.info("[1/5] 시장 지수 및 공통 뉴스 수집 중... (비동기 병렬)")
-        market_indices, market_news, dc_posts, reddit_posts, datalab_trends = await asyncio.gather(
+        enabled_community_sources = get_enabled_community_sources()
+        community_task_factories = {
+            "stockplus_insight": lambda: get_stockplus_insight_signals(2),
+            "blind_stock_lounge": lambda: get_blind_stock_lounge(2),
+            "dc_stock_gallery": lambda: get_dc_stock_gallery(3),
+            "reddit_wallstreetbets": lambda: get_reddit_wallstreetbets(3),
+        }
+        enabled_community_tasks = {
+            source_id: task_factory()
+            for source_id, task_factory in community_task_factories.items()
+            if source_id in enabled_community_sources
+        }
+        market_indices, market_news, datalab_trends = await asyncio.gather(
             get_market_indices(),
             get_market_news(),
-            get_dc_stock_gallery(3),
-            get_reddit_wallstreetbets(3),
-            get_naver_datalab_trends()
+            get_naver_datalab_trends(),
         )
-        
+        community_source_posts = {}
+        if enabled_community_tasks:
+            community_results = await asyncio.gather(
+                *enabled_community_tasks.values(),
+                return_exceptions=True,
+            )
+            for source_id, result in zip(enabled_community_tasks.keys(), community_results):
+                if isinstance(result, Exception):
+                    global_logger.warning("[Community] %s 수집 실패: %s", source_id, result)
+                    community_source_posts[source_id] = []
+                else:
+                    community_source_posts[source_id] = result
+
         # Phase 2: 공통 컨텍스트를 안전화하고, 공용 요약과 지표를 계산합니다.
         global_logger.info("[2/5] AI 시장 시황 요약 중...")
         market_summary_md = await generate_market_summary(market_indices, market_news, datalab_trends)
 
         # 커뮤니티 안전 필터 적용
         community_filter_results = filter_community_posts_by_source(
-            {
-                "dc_stock_gallery": dc_posts,
-                "reddit_wallstreetbets": reddit_posts,
-            },
+            community_source_posts,
             max_items_per_source=3,
+            enabled_sources=enabled_community_sources,
         )
         for source_id, result in community_filter_results.items():
             global_logger.info(
