@@ -8,6 +8,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
+
 @dataclass
 class NewsArticle:
     """뉴스와 관련된 기사 정보를 담는 데이터 모델."""
@@ -30,8 +31,10 @@ class CommunityPost:
     """커뮤니티(종토방, 디시인사이드) 등의 게시글 정보를 담는 데이터 모델."""
     title: str
     link: str
+    source_id: Optional[str] = None
     views: Optional[str] = None
     likes: Optional[str] = None
+    comments: Optional[str] = None
 
 @dataclass
 class SearchTrend:
